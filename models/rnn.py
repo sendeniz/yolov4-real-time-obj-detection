@@ -1,17 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Sep 24 22:52:13 2022
-
-@author: sen
-"""
 import torch
 from torch import nn
 import torch.nn.init as init
 import numpy as np
 from cells.rnncells import RnnCell, GruCell, LstmCell, UrLstmCell
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-from cells.hippocells import GatedHippoCell
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+from cells.hippocells import GatedHippoCell, GatedHippoCell_v2
+from torch.utils.checkpoint import checkpoint
 
 class SimpleRNN(nn.Module):
     """
@@ -51,6 +45,7 @@ class SimpleRNN(nn.Module):
         Returns:
             tuple: A tuple containing the output tensor of shape [batchsize, output_size], and the final hidden state tensor of shape [batchsize, hidden_size].
         """
+        
         if h_t is None:
             h_t = torch.zeros(xs.shape[0], self.hidden_size).to(device)
 
@@ -178,13 +173,13 @@ class UrLstmRNN(nn.Module):
         return out
 
 class HippoRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size, output_size, maxlength):
         super(HippoRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
-
-        self.cell = GatedHippoCell(input_size=input_size, hidden_size=hidden_size)
-        self.fc = nn.Linear(hidden_size, 10)
+        self.maxlength =  maxlength
+        self.cell = GatedHippoCell(input_size=input_size, hidden_size=hidden_size, maxlength=maxlength)
+        self.fc = nn.Linear(hidden_size, output_size)
 
         self.initialize_weights()
 
@@ -204,9 +199,9 @@ class HippoRNN(nn.Module):
                 torch.zeros(xs.shape[0], self.hidden_size).to(device),
                 torch.zeros(xs.shape[0], self.hidden_size).to(device),
             )
-
+        
         for t in range(xs.size(1)):
-
+            # for smnist
             # shape xs :=: (batchsize, 28*28, 1)
             # shape xs[:, t, :] :=: (batchsize, 1)
 
@@ -216,6 +211,51 @@ class HippoRNN(nn.Module):
             carry = self.cell(x=xs[:, t, :], carry=carry, t=t)
             c_t = carry[1]
         return self.fc(c_t)
+    
+class HippoRNN_v2(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, maxlength):
+        super(HippoRNN_v2, self).__init__()
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.maxlength =  maxlength
+        self.cell = GatedHippoCell_v2(input_size=input_size, hidden_size=hidden_size, maxlength=maxlength)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        std = 1.0 / np.sqrt(self.hidden_size)
+        for layer_name, layer in self.named_children():
+            if layer_name in ['i2h', 'h2h']:
+                for param_name, param in layer.named_parameters():
+                    if 'weight' in param_name:
+                        init.uniform_(param, -std, std)
+                    elif 'bias' in param_name:
+                        init.zeros_(param)
+
+    def forward(self, xs, t, carry=(None, None)):
+        # carry[0] is hidden state
+        # carry[1] is cell state
+        if carry[0] is None:
+            carry = (
+                torch.zeros(xs.shape[0], self.hidden_size).to(device),
+                torch.zeros(xs.shape[0], self.hidden_size).to(device),
+            )
+        
+        # for loop that iterates over timesteps t within a sequence is part of training loop
+
+        # shape xs :=: (batchsize, seq_len, input_size)
+        # shape xs[:, t, :] :=: (batchsize, input_size)
+
+        # Input to hippo cell should be :-: shape: f_t :-: (batchsize, 1, 1)
+        # Carry to hippo cell should be :-: shape: c_t :-: (batchsize, 1, N)
+        # Carry to hippo cell should be :-: shape: h_t :-: (batchsize, N)
+        carry = self.cell(x=xs[:, t, :], carry=carry, t=t)
+        # carry = checkpoint(self.cell, xs[:, t, :], carry, t, use_reentrant=False)
+        c_t = carry[1]
+        # out = self.fc(c_t)
+        out = checkpoint(self.fc, c_t, use_reentrant=False)
+        return out, carry
 
 def test_rnn():
   # batch size, sequence length, input size
@@ -254,6 +294,29 @@ def test_urlstm():
     out = model(x)
     xshape = out.shape
     return x, xshape
+
+def test_hippornn_v2():
+    n = 5
+    model = HippoRNN_v2(input_size=64*19*19, hidden_size=8, output_size=((30 + 5) * 3) * ((608 * 4 // (512 // 4)) **2), maxlength=n)
+    model = model.to(device)
+    x = []
+    carry = (None, None)
+    # create n number of test data and store tensor to list
+    for _ in range(n):
+        tensor = torch.rand(4, 64, 19, 19)
+        x.append(tensor)
+    for seq_idx in range(len(x)):
+        x_t = x[seq_idx]
+        x_t = torch.flatten(x_t, 1)
+        x_t = x_t.unsqueeze(-1)
+        x_t = x_t.expand(-1, -1, x_t.shape[1]).to(device) 
+        # carry[0] is hidden state
+        # carry[1] is cell state
+        out, carry = model(xs = x_t, t=seq_idx, carry = carry)
+ 
+    print("Hippo RNN v2 test: passes")
+
+#test_hippornn_v2()
 
 #testx, xdims = test_rnn()
 #print("Simple RNN size test: passed.")

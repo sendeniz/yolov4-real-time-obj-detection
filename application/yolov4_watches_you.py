@@ -19,7 +19,7 @@ anchors = [
 
 scaled_anchors = torch.tensor(anchors) / ( 1 / torch.tensor(S).unsqueeze(1).unsqueeze(1).repeat(1, 3, 2) )
 
-conf_thresh = 0.85 #0.75 #0.7 #0.6 #0.5 #0.45 #0.5
+conf_thresh = 0.8 #0.75 #0.7 #0.6 #0.5 #0.45 #0.5
 nms_iou_thresh = 0.5
 map_iou_thresh = 0.5
 nworkers = 2
@@ -27,7 +27,7 @@ nclasses = 80
 lr =  0.00001
 weight_decay = 0.0005
 path_cpt_file = f'cpts/yolov4_608_mscoco.cpt'
-checkpoint = torch.load(path_cpt_file) #, map_location=torch.device('cpu'))
+checkpoint = torch.load(path_cpt_file, map_location=torch.device('cpu'))
 model = YoloV4_EfficentNet(nclasses = nclasses).to(device)
 optimizer = optim.Adam(model.parameters(), lr = lr, weight_decay = weight_decay)
 model.load_state_dict(checkpoint['model_state_dict'])
@@ -64,7 +64,7 @@ try:
 
         # Perform inference
         with torch.no_grad():
-            preds = model(frame.to(device))
+            preds = model(frame)
         
         boxes = [] 
         for i in range(preds[0].shape[1]):

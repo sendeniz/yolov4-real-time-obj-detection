@@ -3,7 +3,13 @@ import numpy as np
 from collections import Counter
 import cv2 as cv
 import math
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+#device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+
+def write_results(file_prefix, metrics, data_lists, run):
+    for metric, data in zip(metrics, data_lists):
+        with open(f'results/{file_prefix}_{metric}_run{run + 1}.txt', 'w') as values:
+            values.write(str(data))
 
 def iou_width_height(boxes1, boxes2):
     """
@@ -30,7 +36,7 @@ def box_intersection_over_union(box1, box2, mode = 'iou'):
             box format whether midpoint location or corner location of bounding boxes
             are used.
     Output: Intersection over union (tensor).
-    """     
+    """
     epsilon = 1e-9
     # Pred boxes
     box1_x1 = box1[..., 0:1] - (box1[..., 2:3] / 2)
@@ -57,7 +63,7 @@ def box_intersection_over_union(box1, box2, mode = 'iou'):
     inter_h = (inter_y2 - inter_y1).clamp(0)
     inter_area = (inter_w * inter_h) + epsilon
     union = (box1_area + box2_area - inter_area + epsilon)
-    
+
     # Computer IoU
     iou = inter_area / union
 
@@ -71,7 +77,7 @@ def box_intersection_over_union(box1, box2, mode = 'iou'):
         convex_area = convex_w * convex_h + epsilon
         giou = iou - ((convex_area - union) / convex_area)
         return giou
-    
+
     if mode == 'ciou':
         convex_w = torch.max(box1_x2, box2_x2)-torch.min(box1_x1, box2_x1)
         convex_h = torch.max(box1_y2, box2_y2)-torch.min(box1_y1, box2_y1)
@@ -103,7 +109,7 @@ def intersection_over_union(box1, box2):
     epsilon = 1e-16
     N = box1.size(0)
     M = box2.size(0)
-    # converts boxes 
+    # converts boxes
     x1 = box1[..., 0:1] - (box1[..., 2:3] / 2)
     y1 = box1[..., 1:2] - (box1[..., 3:4] / 2)
     x2 = box1[..., 0:1] + (box1[..., 2:3] / 2)
@@ -138,7 +144,7 @@ def intersection_over_union(box1, box2):
     return iou.clamp(0)
 
 
-def mean_average_precision(pred_boxes, true_boxes, iou_threshold=0.5, nclasses=80):
+def mean_average_precision(rank, pred_boxes, true_boxes, iou_threshold=0.5, nclasses=80):
     """
     Calculates mean average precision, by collecting predicted bounding boxes on the
     test set and then evaluate whether predictied boxes are TP or FP. Prediction with an
@@ -158,6 +164,12 @@ def mean_average_precision(pred_boxes, true_boxes, iou_threshold=0.5, nclasses=8
     precision_lst = []
     pred_boxes = torch.tensor(pred_boxes)
     true_boxes = torch.tensor(true_boxes)
+    #print("Pred boxes shape:", pred_boxes.shape)
+    #print("True boxes shape:", true_boxes.shape)
+    # if no predictions return 0
+    if pred_boxes.size(0) == 0:
+       return torch.tensor(0.0).to(rank), torch.tensor(0.0).to(rank), torch.tensor(0.0).to(rank)
+
     # iterate over class category c
     for c in range(nclasses):
         # init candidate detections and ground truth as an empty list for storage
@@ -238,7 +250,7 @@ def mean_average_precision(pred_boxes, true_boxes, iou_threshold=0.5, nclasses=8
         recalls = torch.cat((torch.tensor([0]), recalls))
         # torch.trapz for numerical integration
         avg_precision.append(torch.trapz(precisions, recalls))
-        
+
         TP = torch.sum(TPs)
         FP = torch.sum(FPs)
         recall = TP / (total_true_bboxes + eps)
@@ -249,8 +261,8 @@ def mean_average_precision(pred_boxes, true_boxes, iou_threshold=0.5, nclasses=8
     recall_val = sum(recall_lst) / len(recall_lst)
     precision_val =  sum(precision_lst) / len(precision_lst)
     map_val = sum(avg_precision) / len(avg_precision)
-    # return map, recall and precision 
-    return map_val, recall_val, precision_val
+    # return map, recall and precision
+    return map_val.to(rank), recall_val.to(rank), precision_val.to(rank)
 
 
 def non_max_suppression(boxes, iou_threshold, confidence_threshold):
@@ -267,7 +279,7 @@ def non_max_suppression(boxes, iou_threshold, confidence_threshold):
     boxes = torch.tensor(boxes)
     if boxes.size(0) <= 1:
         return boxes
-    
+
     # create confidence mask to filter out bounding boxes that are below confidence threshold
     confidence_mask = boxes[:, 1] >= confidence_threshold
     boxes =  boxes[confidence_mask]
@@ -308,7 +320,6 @@ def non_max_suppression(boxes, iou_threshold, confidence_threshold):
 
     return  boxes[keep].tolist()
 
-
 def top1accuracy(class_prob, target):
     """
     Calculates top 1 accuracy.
@@ -330,11 +341,11 @@ def top5accuracy(class_prob, target):
     """
     with torch.no_grad():
         _, top5_class_pred = class_prob.topk(5, 1, largest = True, sorted = True)
-        top5_class_pred = top5_class_pred.t()    
+        top5_class_pred = top5_class_pred.t()
         target_reshaped = target.view(1, -1).expand_as(top5_class_pred)
         correct = (top5_class_pred == target_reshaped)
         ncorrect_top5 = 0
-        for i in range(correct.shape[1]):   
+        for i in range(correct.shape[1]):
             if (sum(correct[:,i]) >= 1):
                 ncorrect_top5 = ncorrect_top5 + 1
         top5_acc = ncorrect_top5 / len(target)
@@ -396,33 +407,33 @@ def draw_bounding_box(image, bounding_boxes, test = False):
 
     # Extract transform_vals
     for i in range(len(bounding_boxes)):
-        if test == True:
+        if test:
             height, width = image.shape[:2]
             class_pred = int(bounding_boxes[i][0])
             certainty = bounding_boxes[i][1]
             bounding_box = bounding_boxes[i][2:]
 
             # Note: width and heigh indexes are switches, somewhere, these are switched so
-            # we correct for the switch by switching 
+            # we correct for the switch by switching
             #bounding_box[2], bounding_box[3] = bounding_box[3], bounding_box[2]
             #assert len(bounding_box) == 4, "Bounding box prediction exceed x, y ,w, h."
             # Extract x, midpoint, y midpoint, w width and h height
-            x = bounding_box[0] 
-            y = bounding_box[1] 
-            w = bounding_box[2] 
-            h = bounding_box[3]  
-        
+            x = bounding_box[0]
+            y = bounding_box[1]
+            w = bounding_box[2]
+            h = bounding_box[3]
+
         else:
             height, width = image.shape[:2]
             class_pred = int(bounding_boxes[i][0])
             bounding_box = bounding_boxes[i][2:]
-            
+
             #assert len(bounding_box) == 4, "Bounding box prediction exceed x, y ,w, h."
             # Extract x midpoint, y midpoint, w width and h height
-            x = bounding_box[0] 
-            y = bounding_box[1] 
+            x = bounding_box[0]
+            y = bounding_box[1]
             w = bounding_box[2]
-            h = bounding_box[3] 
+            h = bounding_box[3]
 
         l = int((x - w / 2) * width)
         r = int((x + w / 2) * width)
@@ -433,7 +444,7 @@ def draw_bounding_box(image, bounding_boxes, test = False):
             l = 0
         if r > width - 1:
             r = width - 1
-        if t < 0: 
+        if t < 0:
             t = 0
         if b > height - 1:
             b = height - 1
@@ -449,17 +460,116 @@ def draw_bounding_box(image, bounding_boxes, test = False):
             image = cv.rectangle(image, (l-2, t - 15), (l + txt_width, t), colors[class_pred], -1)
             image = cv.putText(image, class_names[class_pred], (l, t-3),
                     cv.FONT_HERSHEY_TRIPLEX, 0.5, [255, 255, 255], 1)
-   
+
     return image
 
+def draw_bounding_box_vid(image, bounding_boxes, test = False):
+    """
+    Input: PIL image and bounding boxes (as list).
+    Output: Image with drawn bounding boxes.
+    """
+    image = np.ascontiguousarray(image, dtype = np.uint8)
+    cmap = [
+        [147, 69, 52],
+        [29, 178, 255],
+        [200, 149, 255],
+        [151, 157, 255],
+        [255, 115, 100],
+        [134, 219, 61],
+        [199, 55, 255],
+        [49, 210, 207],
+        [187, 212, 0],
+        [52, 147, 26],
+        [236, 24, 0],
+        [168, 153, 44],
+        [56, 56, 255],
+        [255, 194, 0],
+        [255, 56, 132],
+        [133, 0, 82],
+        [255, 56, 203],
+        [31, 112, 255],
+        [23, 204, 146]
+        ]
 
-def class_accuracy(model_pred, target, confidence_threshold):
+    class_names = ["Airplane", "Antelope", "Bear", "Bicycle", "Bird", "Bus", "Car",
+                     "Cattle", "Dog", "Domestic cat", "Elephant", "Fox", "Giant panda",
+                     "Hamster", "Horse", "Lion", "Lizard", "Monkey", "Motorcycle", "Rabbit",
+                     "Red panda", "Sheep", "Snake", "Squirrel", "Tiger", "Train",
+                     "Turtle", "Watercraft", "Whale", "Zebra"
+                     ]
+
+
+    # Calculate the number of classes
+    nclasses = len(class_names)
+
+    # Create a list of colors by mapping the class index to the cmap list
+    colors = [cmap[i % len(cmap)] for i in range(nclasses)]
+
+    # Extract transform_vals
+    for i in range(len(bounding_boxes)):
+        if test:
+            height, width = image.shape[:2]
+            class_pred = int(bounding_boxes[i][0])
+            certainty = bounding_boxes[i][1]
+            bounding_box = bounding_boxes[i][2:]
+
+            # Note: width and heigh indexes are switches, somewhere, these are switched so
+            # we correct for the switch by switching
+            #bounding_box[2], bounding_box[3] = bounding_box[3], bounding_box[2]
+            #assert len(bounding_box) == 4, "Bounding box prediction exceed x, y ,w, h."
+            # Extract x, midpoint, y midpoint, w width and h height
+            x = bounding_box[0]
+            y = bounding_box[1]
+            w = bounding_box[2]
+            h = bounding_box[3]
+
+        else:
+            height, width = image.shape[:2]
+            class_pred = int(bounding_boxes[i][0])
+            bounding_box = bounding_boxes[i][2:]
+
+            #assert len(bounding_box) == 4, "Bounding box prediction exceed x, y ,w, h."
+            # Extract x midpoint, y midpoint, w width and h height
+            x = bounding_box[0]
+            y = bounding_box[1]
+            w = bounding_box[2]
+            h = bounding_box[3]
+
+        l = int((x - w / 2) * width)
+        r = int((x + w / 2) * width)
+        t = int((y - h / 2) * height)
+        b = int((y + h / 2) * height)
+
+        if l < 0:
+            l = 0
+        if r > width - 1:
+            r = width - 1
+        if t < 0:
+            t = 0
+        if b > height - 1:
+            b = height - 1
+
+        image = cv.rectangle(image, (l, t), (int(r), int(b)), colors[class_pred], 3)
+        (txt_width, txt_height), _ = cv.getTextSize(class_names[class_pred], cv.FONT_HERSHEY_TRIPLEX, 0.6, 2)
+
+        if t < 20:
+            image = cv.rectangle(image, (l-2, t + 15), (l + txt_width, t), colors[class_pred], -1)
+            image = cv.putText(image, class_names[class_pred], (l, t+12),
+                    cv.FONT_HERSHEY_TRIPLEX, 0.5, [255, 255, 255], 1)
+        else:
+            image = cv.rectangle(image, (l-2, t - 15), (l + txt_width, t), colors[class_pred], -1)
+            image = cv.putText(image, class_names[class_pred], (l, t-3),
+                    cv.FONT_HERSHEY_TRIPLEX, 0.5, [255, 255, 255], 1)
+
+    return image
+
+def class_accuracy(rank, model_pred, target, confidence_threshold):
     tot_class_preds, correct_class = 0, 0
     tot_noobj, correct_noobj = 0, 0
     tot_obj, correct_obj = 0, 0
 
     for i in range(3):
-        target[i] =target[i].to(device)
+        target[i] = target[i].to(rank)
         obj = target[i][..., 0] == 1 # in paper this is Iobj_i
         noobj = target[i][..., 0] == 0  # in paper this is Iobj_i
 
@@ -471,7 +581,7 @@ def class_accuracy(model_pred, target, confidence_threshold):
         tot_obj += torch.sum(obj)
         correct_noobj += torch.sum(obj_preds[noobj] == target[i][..., 0][noobj])
         tot_noobj += torch.sum(noobj)
-    
+
     class_acc = (correct_class / (tot_class_preds + 1e-16))
     noobj_acc = (correct_noobj / (tot_noobj + 1e-16))
     obj_acc = (correct_obj / (tot_obj + 1e-16))
@@ -495,8 +605,8 @@ def cells_to_bboxes(predictions, anchors, S, is_preds=True):
     num_anchors = len(anchors)
     box_predictions = predictions[..., 1:5]
     if is_preds:
-        anchors = anchors.reshape(1, len(anchors), 1, 1, 2).to(device)
-        box_predictions[..., 0:2] = torch.sigmoid(box_predictions[..., 0:2]).to(device)
+        anchors = anchors.reshape(1, len(anchors), 1, 1, 2)
+        box_predictions[..., 0:2] = torch.sigmoid(box_predictions[..., 0:2])
         box_predictions[..., 2:] = torch.exp(box_predictions[..., 2:]) * anchors
         scores = torch.sigmoid(predictions[..., 0:1])
         best_class = torch.argmax(predictions[..., 5:], dim=-1).unsqueeze(-1)
@@ -516,17 +626,15 @@ def cells_to_bboxes(predictions, anchors, S, is_preds=True):
     converted_bboxes = torch.cat((best_class, scores, x, y, w_h), dim=-1).reshape(batch_size, num_anchors * S * S, 6)
     return converted_bboxes.tolist()
 
-def get_bouding_boxes(loader, model, iou_threshold, anchors, confidence_threshold):
+def get_bounding_boxes(rank, loader, model, iou_threshold, anchors, confidence_threshold):
     # make sure model is in eval before get bboxes
     model.eval()
     train_idx = 0
     all_pred_boxes = []
     all_true_boxes = []
-    for batch_idx, (x, labels) in enumerate(loader):
-        if (batch_idx + 1) % 10 == 0:
-            print(f"Evaluating on: {batch_idx + 1} / {len(loader)}.")
+    for batch_idx, (x, y) in enumerate(loader):
         x = x.permute(0, 3, 1, 2)
-        x = x.to(torch.float32).to(device)
+        x = x.to(torch.float32).to(rank)
         with torch.no_grad():
             predictions = model(x)
 
@@ -534,7 +642,7 @@ def get_bouding_boxes(loader, model, iou_threshold, anchors, confidence_threshol
         bboxes = [[] for _ in range(batch_size)]
         for i in range(3):
             S = predictions[i].shape[2]
-            anchor = torch.tensor([*anchors[i]]).to(device) * S
+            anchor = torch.tensor([*anchors[i]]).to(rank) * S
             boxes_scale_i = cells_to_bboxes(
                 predictions[i], anchor, S=S, is_preds=True
             )
@@ -542,7 +650,7 @@ def get_bouding_boxes(loader, model, iou_threshold, anchors, confidence_threshol
                 bboxes[idx] += box
         # we just want one bbox for each label, not one for each scale
         true_bboxes = cells_to_bboxes(
-            labels[2], anchor, S=S, is_preds=False
+            y[2], anchor, S=S, is_preds=False
         )
         for idx in range(batch_size):
             nms_boxes = non_max_suppression(
@@ -558,6 +666,90 @@ def get_bouding_boxes(loader, model, iou_threshold, anchors, confidence_threshol
             train_idx += 1
     model.train()
     return all_pred_boxes, all_true_boxes
+
+def get_bounding_boxes_vid(rank, loader, model, iou_threshold, anchors, confidence_threshold):
+    # make sure model is in eval before get bboxes
+    model.eval()
+    train_idx = 0
+    all_pred_boxes = []
+    all_true_boxes = []
+    for batch_idx, (x, y) in enumerate(loader):
+        for seq_idx in range(len(x)):
+            x_t = x[seq_idx].permute(0, 3, 1, 2)
+            x_t = x_t.to(torch.float32).to(rank)
+            with torch.no_grad():
+                predictions = model(x_t)
+            batch_size = x_t.shape[0]
+            bboxes = [[] for _ in range(batch_size)]
+            for i in range(3):
+                S = predictions[i].shape[2]
+                anchor = torch.tensor([*anchors[i]]).to(rank) * S
+                boxes_scale_i = cells_to_bboxes(
+                    predictions[i], anchor, S=S, is_preds=True
+                )
+                for idx, (box) in enumerate(boxes_scale_i):
+                    bboxes[idx] += box
+            # we just want one bbox for each label, not one for each scale
+            true_bboxes = cells_to_bboxes(
+                y[seq_idx][2], anchor, S=S, is_preds=False
+            )
+            for idx in range(batch_size):
+                nms_boxes = non_max_suppression(
+                    bboxes[idx],
+                    iou_threshold=iou_threshold,
+                    confidence_threshold=confidence_threshold)
+
+                for nms_box in nms_boxes:
+                    all_pred_boxes.append([train_idx] + nms_box)
+                for box in true_bboxes[idx]:
+                    if box[1] > confidence_threshold:
+                        all_true_boxes.append([train_idx] + box)
+                train_idx += 1
+    model.train()
+    return all_pred_boxes, all_true_boxes
+
+def get_bounding_boxes_holo_vid(rank, loader, model, iou_threshold, anchors, confidence_threshold):
+    # make sure model is in eval before get bboxes
+    model.eval()
+    train_idx = 0
+    all_pred_boxes = []
+    all_true_boxes = []
+    for batch_idx, (x, y) in enumerate(loader):
+        carry = ((None, None), (None, None), (None, None))
+        for seq_idx in range(len(x)):
+            x_t = x[seq_idx].permute(0, 3, 1, 2)
+            x_t = x_t.to(torch.float32).to(rank)
+            with torch.no_grad():
+                predictions, carry = model(x_t, t=seq_idx, carry=carry)
+            batch_size = x_t.shape[0]
+            bboxes = [[] for _ in range(batch_size)]
+            for i in range(3):
+                S = predictions[i].shape[2]
+                anchor = torch.tensor([*anchors[i]]).to(rank) * S
+                boxes_scale_i = cells_to_bboxes(
+                    predictions[i], anchor, S=S, is_preds=True
+                )
+                for idx, (box) in enumerate(boxes_scale_i):
+                    bboxes[idx] += box
+            # we just want one bbox for each label, not one for each scale
+            true_bboxes = cells_to_bboxes(
+                y[seq_idx][2], anchor, S=S, is_preds=False
+            )
+            for idx in range(batch_size):
+                nms_boxes = non_max_suppression(
+                    bboxes[idx],
+                    iou_threshold=iou_threshold,
+                    confidence_threshold=confidence_threshold)
+
+                for nms_box in nms_boxes:
+                    all_pred_boxes.append([train_idx] + nms_box)
+                for box in true_bboxes[idx]:
+                    if box[1] > confidence_threshold:
+                        all_true_boxes.append([train_idx] + box)
+                train_idx += 1
+    model.train()
+    return all_pred_boxes, all_true_boxes
+
 
 def linearly_increasing_lr(initial_lr, final_lr, current_epoch, total_epochs):
     return initial_lr + (final_lr - initial_lr) * (current_epoch / total_epochs)

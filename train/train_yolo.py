@@ -20,7 +20,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # params
 img_size = 608 #416
-conf_tresh = 0.6 #0.4 #0.6
+conf_tresh = 0.8 #0.4 #0.6
 map_iou_thresh = 0.5  #0.5 #0.5 
 nms_iou_thresh = 0.65 #0.45 #0.65
 nclasses = 80
@@ -45,11 +45,7 @@ def train_yolov4(train_loader, model, optimizer, loss_fn, scaled_anchors):
     for batch_idx, (x, y) in enumerate(train_loader):
         x = x.permute(0, 3, 1, 2)
         x = x.to(torch.float32).to(device)
-        #print(x.shape)
         y0, y1, y2 = (y[0].to(device), y[1].to(device), y[2].to(device))
-        #print("X shape:", x.shape)
-       
-        #print("X input shape:", x.shape)
         # x shape :-: (batchsize, channels, height, width)
         preds = model(x)
         loss_val = (loss_fn(preds[0], y0, scaled_anchors[0]) + loss_fn(preds[1], y1, scaled_anchors[1]) + loss_fn(preds[2], y2, scaled_anchors[2]))
@@ -57,7 +53,7 @@ def train_yolov4(train_loader, model, optimizer, loss_fn, scaled_anchors):
         class_acc, noobj_acc, obj_acc = class_accuracy(preds, y, conf_tresh)
         loss_val.backward()
         optimizer.step()
-        
+        torch.cuda.empty_cache()
     return (float(loss_val.item()), class_acc, noobj_acc, obj_acc)
 
 def test_yolov4(test_loader, model, loss_fn, scaled_anchors):

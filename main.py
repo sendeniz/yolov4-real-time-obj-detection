@@ -5,7 +5,6 @@ argument_list = [
   "model_name",
   "dataset_name",
   "save_model",
-  "continue_training",
   "sequence_length",
   "input_size",
   "hidden_size",
@@ -15,19 +14,13 @@ argument_list = [
   "nepochs",
   "nruns",
   "lr",
-  "warmup_lr",
   "momentum",
-  "warmup",
   "min_lr",
   "cosine_anneal",
   "exponential_decay",
   "one_cycle",
   "weight_decay",
   "N",
-  "image_size",
-  "conf_tresh",
-  "map_iou_thresh",
-  "nms_iou_thresh", 
 ]
 
 def train_model_with_args():

@@ -134,7 +134,6 @@ class LstmCell(nn.Module):
 
         return (h_t, c_t)
 
-
 class UrLstmCell(nn.Module):
     def __init__(self, input_size, hidden_size):
         super(UrLstmCell, self).__init__()
@@ -172,50 +171,5 @@ class UrLstmCell(nn.Module):
         c_t = g * c_t_1 + (1-g) * torch.tanh(u)
 
         h_t = torch.sigmoid(o) * torch.tanh(c_t)
-
-        return (h_t, c_t)
-
-class HippoLstmCell(nn.Module):
-    def __init__(self, input_size, hidden_size, activation = "tanh"):
-        super(HippoLstmCell, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.i2h = nn.Linear(input_size, hidden_size)
-        self.h2h = nn.Linear(input_size, hidden_size)
-        self.activation = activation
-        if self.activation not in ["tanh", "relu", "sigmoid"]:
-            raise ValueError("Invalid nonlinearity selected for RNN. Please use tanh, relu, or sigmoid.")
-
-
-    def forward(self, x, carry):
-        '''
-        Inputs: input (torch tensor) of shape [batchsize, input_size]
-                hidden state (torch tensor) of shape [batchsize, hiddensize]
-        Output: output (torch tensor) of shape [batchsize, hiddensize]
-        '''
-
-        # carry
-        h_t_1, c_t_1 = carry
-        gates_i = self.i2h(x)
-        #gates_h = self.h2h(h_t_1)
-        gates_h = self.h2h(torch.cat((x[:, :1], h_t_1), dim=-1))
-        # shape: x :-: (batchsize, 1)
-        # shape: h_t_1 :-: (batchsize, hiddensize)
-        # shape: c_t_1 :-: (batchsize, hiddensize)
-        # shape: gates_i :-: (batchsize, hiddensize * 4)
-        # shape: gates_h :-: (batchsize, hiddensize * 4)
-        # shape: input_gates :-: (batchsize, hiddensize)
-        # shape: c_t :-: (batchsize, hiddensize)
-        output_gate = gates_i + gates_h
-
-        o_t = torch.sigmoid(output_gate)
-        c_t = c_t_1
-
-        if self.activation == "tanh":
-            h_t = o_t * torch.tanh(c_t)
-        if self.activation == "relu":
-            h_t = o_t * torch.relu(c_t)
-        if self.activation == "sigmoid":
-            h_t = o_t * torch.sigmoid(c_t)
 
         return (h_t, c_t)

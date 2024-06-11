@@ -5,7 +5,7 @@ import random
 import os
 from PIL import Image
 
-cv.setNumThreads(6)
+cv.setNumThreads(4)
 image_size = 608 # 416
 
 class AugmentImage:
@@ -15,7 +15,10 @@ class AugmentImage:
         image = (image - np.array(mean, dtype=np.float32) * max_pixel_val) / (np.array(std, dtype=np.float32) * max_pixel_val)
         return image
 
-    def posterize(image,  num_bits = 4, p = 0.1):
+    def posterize(image,  num_bits = 4, p = 0.1, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             levels = 2 ** num_bits
             divisor = 256 // levels
@@ -23,13 +26,19 @@ class AugmentImage:
             image = cv.LUT(image, lut)
         return image
 
-    def greyscale(image, p = 0.1):
+    def greyscale(image, p = 0.1, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
             image = cv.merge([image, image, image])
         return image
 
-    def blur(image, p = 0.1):
+    def blur(image, p = 0.1, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             kernel_width = np.random.randint(3, 7)
             kernel_height = np.random.randint(3, 7)
@@ -39,7 +48,10 @@ class AugmentImage:
             image = cv.GaussianBlur(image, (kernel_width, kernel_height), std_deviation)
         return image
 
-    def clahe(image, p = 0.1):
+    def clahe(image, p = 0.1, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             b, g, r = cv.split(image)
             # apply clahe to each color channel independently
@@ -51,7 +63,10 @@ class AugmentImage:
             image = cv.merge([b_clahe, g_clahe, r_clahe])
         return image
 
-    def cutout(image, p = 0.3):
+    def cutout(image, p = 0.3, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             height, width = image.shape[:2]
             scales = [0.10] * 1 + [0.080] * 2 + [0.060] * 4 + [0.040] * 8 + [0.020] * 16  # image size fraction
@@ -67,7 +82,10 @@ class AugmentImage:
                 image[ymin:ymax, xmin:xmax] = [np.random.randint(64, 191) for _ in range(3)]
         return image
 
-    def hsv_augment(image, hgain = 0.1, sgain=0.9, vgain=0.9, p = 1.0):
+    def hsv_augment(image, hgain = 0.1, sgain=0.9, vgain=0.9, p = 1.0, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             r = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain] + 1  # random gains
             hue, sat, val = cv.split(cv.cvtColor(image, cv.COLOR_BGR2HSV))
@@ -82,7 +100,7 @@ class AugmentImage:
             image = cv.cvtColor(image_hsv, cv.COLOR_HSV2BGR, dst=image)
         return image
 
-    def scale(image, bboxes, scale_factor = 1.09, lower_bound = 1.0, p = 1.0, preserve_ratio = True):
+    def scale(image, bboxes, scale_factor = 1.09, lower_bound = 1.0, p = 1.0, preserve_ratio = True, seed = None):
         """
         Scales an image by a random factor bound below by the lower_bound. 
 
@@ -98,6 +116,9 @@ class AugmentImage:
         - numpy.ndarray:
             The scaled image.
         """
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             height, width =  image.shape[:2]
             if preserve_ratio == True:
@@ -114,7 +135,7 @@ class AugmentImage:
             # and drop bounding boxes based on min visbility of 0.4 compared to orginal
             bboxes = AugmentBoundingBox.clip(bboxes, img_size = height, min_visibility = 0.4)
             # create black image for padding if scaled below 1.0
-            blankimg = np.zeros((height, width, 3), dtype=np.uint8) 
+            blankimg = np.zeros((height, width, 3), dtype=np.uint8)
             y_lim = int(min(scale_y, 1) * height)
             x_lim = int(min(scale_x, 1) * width)
             # paste scale image on black background
@@ -122,8 +143,8 @@ class AugmentImage:
             blankimg[:y_lim,:x_lim,:] = image[:y_lim,:x_lim,:]
             image = blankimg
         return image, bboxes
-    
-    def translate(image, bboxes, translate_factor = 0.09, p = 1.0, preserve_ratio = False):
+
+    def translate(image, bboxes, translate_factor = 0.09, p = 1.0, preserve_ratio = False, seed = None):
         """
         Translates an image by a random factor representing the percentage of the image dimensions.
 
@@ -137,6 +158,10 @@ class AugmentImage:
         - numpy.ndarray:
             The translated image.
         """
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+
         if np.random.rand() <= p:
             lower_bound = - translate_factor
             height, width =  image.shape[:2]
@@ -147,7 +172,7 @@ class AugmentImage:
                 translate_x_val = random.uniform(lower_bound, translate_factor)
                 translate_y_val = translate_x_val
             # create blank image for padding
-            blankimg = np.zeros((height, width, 3), dtype=np.uint8) 
+            blankimg = np.zeros((height, width, 3), dtype=np.uint8)
             corner_x = int(translate_x_val * width)
             corner_y = int(translate_y_val * height)
             # change origin to the top-left corner of the translated box
@@ -157,12 +182,15 @@ class AugmentImage:
             # translate bounding boxes
             bboxes[:,:4] += [corner_x, corner_y, corner_x, corner_y]
             # clip bounding boxes to be within image dimension
-            # and drop bounding boxes based on min visbility of 0.4 compared to orginal 
+            # and drop bounding boxes based on min visbility of 0.4 compared to orginal
             bboxes = AugmentBoundingBox.clip(bboxes, img_size = height, min_visibility = 0.4)
             image = blankimg
         return image, bboxes
-    
-    def horizontal_flip(image, bboxes, p = 0.3):
+
+    def horizontal_flip(image, bboxes, p = 0.3, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             image = cv.flip(image, 1)
             height, width = image.shape[:2]
@@ -175,12 +203,15 @@ class AugmentImage:
             bboxes[:,2] += bboxes_width
         return image, bboxes
 
-    def vertical_flip(image, bboxes, p = 0.1):
+    def vertical_flip(image, bboxes, p = 0.1, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             image = cv.flip(image, 0)
         return image, bboxes
-    
-    def shear(image, bboxes, shear_angle = 10.0, p = 0.3):
+
+    def shear(image, bboxes, shear_angle = 10.0, p = 0.3, seed = None):
         """
         Sheares an image by a random factor represting the degrees.
 
@@ -194,10 +225,13 @@ class AugmentImage:
         - numpy.ndarray:
             The scaled image.
         - sheared_width (float):
-            The shared image width. 
+            The shared image width.
         - shared_height (float):
-             The shared image height. 
+             The shared image height.
         """
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             shear_angle = np.random.uniform(-shear_angle / 100, shear_angle / 100)
             height, width = image.shape[:2]
@@ -206,9 +240,8 @@ class AugmentImage:
             # shear matrix
             M = np.array([[1, abs(shear_angle), 0], [0, 1, 0]])
             new_width = width + abs(shear_angle * height)
-            bboxes[:,0] += (bboxes[:,1] * abs(shear_angle)).astype(int) 
+            bboxes[:,0] += (bboxes[:,1] * abs(shear_angle)).astype(int)
             bboxes[:,2] += (bboxes[:,3] * abs(shear_angle)).astype(int)
-            
             image = cv.warpAffine(image, M, (int(new_width), width))
             if shear_angle < 0:
                 image, bboxes = AugmentImage.horizontal_flip(image, bboxes)
@@ -220,11 +253,14 @@ class AugmentImage:
             bboxes[:,:4] /=  [scale_x, 1, scale_x, 1]
         return image, bboxes
 
-    def rotate(image, bboxes, rotation_angle = 45, p = 0.3):
+    def rotate(image, bboxes, rotation_angle = 45, p = 0.3, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             height, width = image.shape[:2]
             center_x, center_y = width // 2, height // 2
-            rotation_angle = np.random.uniform(-rotation_angle, rotation_angle) 
+            rotation_angle = np.random.uniform(-rotation_angle, rotation_angle)
             # define rotation matrix
             M = cv.getRotationMatrix2D((center_x, center_y), rotation_angle, 1.0)
             cos = np.abs(M[0, 0])
@@ -235,7 +271,7 @@ class AugmentImage:
             # adjust to account for translation when rotated
             M[0, 2] += (rotated_width / 2) - center_x
             M[1, 2] += (rotated_height / 2) - center_y
-            # rotate image 
+            # rotate image
             image = cv.warpAffine(image, M, (rotated_width, rotated_height))
             new_height, new_width = image.shape[:2]
             corners = AugmentBoundingBox.compute_corners(bboxes)
@@ -258,7 +294,10 @@ class AugmentImage:
             bboxes = AugmentBoundingBox.clip(bboxes, img_size = height, min_visibility = 0.4)
         return image, bboxes
 
-    def shuffle_channel(image , p = 0.1):
+    def shuffle_channel(image , p = 0.1, seed = None):
+        if seed is not None:
+            np.random.seed(seed)
+
         if np.random.rand() <= p:
             b, g, r = cv.split(image)
             # shuffle the channels in a random order
@@ -270,11 +309,11 @@ class AugmentImage:
     def resize(image, resize_to):
         image = cv.resize(image, (resize_to, resize_to))
         return image
-    
+
     def rgb_to_bgr(image):
         image = cv.cvtColor(np.array(image), cv.COLOR_RGB2BGR)
         return image
-    
+
     def mosaic(image, bboxes,
                p_scale, scale_factor,
                p_trans, translate_factor,
@@ -305,12 +344,12 @@ class AugmentImage:
                     bboxes = np.roll(np.loadtxt(fname=label_path, delimiter=" ", ndmin=2), 4, axis=1).astype(np.float32)
                     image = np.array(Image.open(img_path).convert("RGB"))
                     image = cv.cvtColor(np.array(image), cv.COLOR_RGB2BGR)
-                    
+
                     # convert to opencv pascal voc format
                     image = AugmentImage.resize(image, image_size // 2)
                     height, width = image.shape[:2]
                     bboxes = AugmentBoundingBox.yolo_to_opencv(bboxes, width, height)
-                    
+
                     image, bboxes = AugmentImage.scale(image, bboxes, scale_factor, p = p_scale)
                     image, bboxes = AugmentImage.translate(image, bboxes, translate_factor, p = p_trans)
                     image, bboxes = AugmentImage.rotate(image, bboxes, rotation_angle, p = p_rot)
@@ -334,9 +373,9 @@ class AugmentImage:
                 bboxes_len = np.cumsum(bboxes_len).tolist()
                 bboxes = np.array(bboxes_lst)
 
-                # 1.top left image of mosaic: no adjustment so skip
+                # 1. top left image of mosaic: no adjustment so skip
                 # note: height is the height of a single mosaic tile not the height of the total image
-                # 2.top right image of mosaic: (x1,y1,x2,y2) + (height, 0, height, 0)
+                # 2. top right image of mosaic: (x1,y1,x2,y2) + (height, 0, height, 0)
                 bboxes[bboxes_len[0]:bboxes_len[1], :4] += [height , 0, height, 0]
                 # 3. bottom left image of mosaic: (x1,y1,x2,y2) + (0, height, 0, height)
                 bboxes[bboxes_len[1]:bboxes_len[2], :4] += [0, height, 0, height]
@@ -352,7 +391,7 @@ class AugmentImage:
                     bboxes = np.roll(np.loadtxt(fname=label_path, delimiter=" ", ndmin=2), 4, axis=1).astype(np.float32)
                     image = np.array(Image.open(img_path).convert("RGB"))
                     image = cv.cvtColor(np.array(image), cv.COLOR_RGB2BGR)
-                    
+
                     # convert to opencv pascal voc format
                     image = AugmentImage.resize(image, image_size // 3)
                     height, width = image.shape[:2]
@@ -374,13 +413,13 @@ class AugmentImage:
                     image = AugmentImage.cutout(image, p = p_cutout)
                     image = AugmentImage.shuffle_channel(image, p = p_shuffle)
                     image = AugmentImage.posterize(image, p = p_post)
-                    
+
                     bboxes_lst.extend(bboxes)
                     mosaic_images.append(image)
                 image = np.vstack([np.hstack([mosaic_images[0], mosaic_images[1], mosaic_images[2]]),
                                    np.hstack([mosaic_images[3], mosaic_images[4], mosaic_images[5]]),
                                    np.hstack([mosaic_images[6], mosaic_images[7], mosaic_images[8]])])
-                
+
                 bboxes_len = np.cumsum(bboxes_len).tolist()
                 bboxes = np.array(bboxes_lst)
                 # 1.top left image of mosaic: no adjustment so skip
@@ -402,7 +441,7 @@ class AugmentImage:
                 # 9.bottom right image of mosaic: (x1,y1,x2,y2) + (height*2, height*2, height*2, height*2)
                 bboxes[bboxes_len[7]:bboxes_len[8], :4] += [height*2, height*2, height*2, height*2]
         return image, bboxes
-    
+
     def mixup(image, bboxes,
                p_scale, scale_factor,
                p_trans, translate_factor,
@@ -423,7 +462,9 @@ class AugmentImage:
             mixup_indices = random.sample(range(len(annotations_csv)), 2)
             mixup_images = []
             mixup_bboxes = []
+
             for idx in mixup_indices:
+                
                 label_path = os.path.join(label_dir, annotations_csv.iloc[idx, 1])
                 img_path = os.path.join(img_dir, annotations_csv.iloc[idx, 0])
                 bboxes = np.roll(np.loadtxt(fname=label_path, delimiter=" ", ndmin=2), 4, axis=1).astype(np.float32)
@@ -457,6 +498,405 @@ class AugmentImage:
             image = (mixup_images[0] * lambda_mix + mixup_images[1] * (1 - lambda_mix)).astype(np.uint8)
             bboxes = np.array(mixup_bboxes)
         return image, bboxes
+    
+    def mosaic_seq(image_size, img_dir,
+                label_dir,
+                vid_id_csv, 
+                frame_ids_dir,
+                p_scale = 1.0, scale_factor = 0.9,
+                p_trans = 1.0, translate_factor = 0.1,
+                p_rot = 0.3, rotation_angle = 45.0,
+                p_shear = 0.0, shear_angle = 10.0,
+                p_hflip = 0.5,
+                p_hsv = 1.0, hgain = 0.015, sgain = 0.7, vgain = 0.4,
+                p_grey = 0.1,
+                p_blur = 0.1,
+                p_clahe = 0.1,
+                p_cutout = 0.0,
+                p_shuffle = 0.1,
+                p_post = 0.1,
+                seq_len = 2):
+    
+        all_vid_frame_ids = []
+        all_vid_frame_ids_paths = []
+        all_sample_rates = []
+        all_vid_folder_ids = []
+
+        mosaic_size = np.random.choice([4, 9])
+
+        for i in range(mosaic_size):
+            random_index = random.randint(0, len(vid_id_csv) - 1)
+            vid_folder_id = vid_id_csv.iloc[random_index, 0]
+            vid_frame_ids_path = frame_ids_dir + vid_folder_id
+            vid_frame_ids = pd.read_csv(f'{vid_frame_ids_path}.csv')
+            sampling_rate = sampling_rate = max(1, len(vid_frame_ids) // seq_len)
+            all_vid_frame_ids.append(vid_frame_ids)
+            all_vid_frame_ids_paths.append(vid_frame_ids_path)
+            all_sample_rates.append(sampling_rate)
+            all_vid_folder_ids.append(vid_folder_id)
+
+        final_images = []
+        final_bboxes = []
+        if mosaic_size == 4:    
+            img_lst1, img_lst2, img_lst3, img_lst4 = [], [], [], []
+            bboxes_lst1, bboxes_lst2, bboxes_lst3, bboxes_lst4 = [], [], [], []
+
+            for j in range(0, len(all_vid_frame_ids)):
+                # random seed to ensure consistent augmentation across sequence
+                random_seed = np.random.randint(0, 10000)
+                for i in range(0, len(all_vid_frame_ids[j]), all_sample_rates[j]):
+                    label_path = os.path.join(label_dir, all_vid_folder_ids[j], all_vid_frame_ids[j].iloc[i, 0]).replace("\\", "/")
+                    img_path = os.path.join(img_dir, all_vid_folder_ids[j], all_vid_frame_ids[j].iloc[i, 0]).replace("\\", "/").replace(".txt", ".JPEG")
+                    bboxes = np.roll(np.loadtxt(fname=label_path, delimiter=" ", ndmin=2), 4, axis=1).astype(np.float32)
+                    
+                    image = np.array(Image.open(img_path).convert("RGB"))
+                    image = AugmentImage.rgb_to_bgr(image)
+                    # resize image
+                    image = AugmentImage.resize(image, image_size // 2)
+                    height, width = image.shape[:2]
+                    # conver to opencv format for augmentations
+                    bboxes = AugmentBoundingBox.yolo_to_opencv(bboxes, width, height)
+                    # scale
+                    image, bboxes = AugmentImage.scale(image, bboxes, scale_factor = scale_factor, p = p_scale, seed = random_seed)
+                    # translate
+                    image, bboxes = AugmentImage.translate(image, bboxes, translate_factor = translate_factor, p = p_trans, seed = random_seed)
+                    # horizontal flip image
+                    image, bboxes = AugmentImage.horizontal_flip(image, bboxes, p = p_hflip, seed = random_seed)
+                    image, bboxes = AugmentImage.rotate(image, bboxes, rotation_angle = rotation_angle, p = p_rot, seed = random_seed)
+                    image, bboxes = AugmentImage.shear(image, bboxes, shear_angle = shear_angle, p = p_shear, seed = random_seed)
+                    image = AugmentImage.posterize(image, p = p_post, seed = random_seed)
+                    image = AugmentImage.greyscale(image, p = p_grey, seed = random_seed)
+                    image = AugmentImage.blur(image, p = p_blur, seed = random_seed)
+                    image = AugmentImage.clahe(image, p = p_clahe, seed = random_seed)
+                    image = AugmentImage.cutout(image, p = p_cutout, seed = random_seed)
+                    image = AugmentImage.hsv_augment(image, hgain = hgain, sgain = sgain, vgain = vgain, p = p_hsv, seed = random_seed)
+                    image = AugmentImage.shuffle_channel(image, p = p_shuffle, seed = random_seed)
+                    
+                    if j == 0:
+                        img_lst1.append(np.array(image))
+                        bboxes_lst1.append(bboxes)
+                    if j == 1:
+                        img_lst2.append(np.array(image))
+                        bboxes_lst2.append(bboxes)
+                    if j == 2:
+                        img_lst3.append(np.array(image))
+                        bboxes_lst3.append(bboxes)
+                    if j == 3:
+                        img_lst4.append(np.array(image))
+                        bboxes_lst4.append(bboxes)
+
+            # ensure img_lists have same length
+            img_lst1 = img_lst1[:seq_len] if len(img_lst1) > seq_len else img_lst1
+            img_lst2 = img_lst2[:seq_len] if len(img_lst2) > seq_len else img_lst2
+            img_lst3 = img_lst3[:seq_len] if len(img_lst3) > seq_len else img_lst3
+            img_lst4 = img_lst4[:seq_len] if len(img_lst4) > seq_len else img_lst4
+
+            # ensure bboxes have same length
+            bboxes_lst1 = bboxes_lst1[:seq_len] if len(bboxes_lst1) > seq_len else bboxes_lst1
+            bboxes_lst2 = bboxes_lst2[:seq_len] if len(bboxes_lst2) > seq_len else bboxes_lst2
+            bboxes_lst3 = bboxes_lst3[:seq_len] if len(bboxes_lst3) > seq_len else bboxes_lst3
+            bboxes_lst4 = bboxes_lst4[:seq_len] if len(bboxes_lst4) > seq_len else bboxes_lst4
+
+            # repeat from beginning if sequence is smaller than intended sequence len
+            for img_lst in [img_lst1, img_lst2, img_lst3, img_lst4]:
+                while len(img_lst) < seq_len:
+                    imgs_to_add = seq_len - len(img_lst)
+                    img_lst.extend(img_lst[:imgs_to_add])
+
+            for bboxes_lst in [bboxes_lst1, bboxes_lst2, bboxes_lst3, bboxes_lst4]:
+                while len(bboxes_lst) < seq_len:
+                    bboxes_to_add = seq_len - len(bboxes_lst)
+                    bboxes_lst.extend(bboxes_lst[:bboxes_to_add])
+
+            # store mosaiced img and bboxes as list to create sequence
+            for k in range(len(img_lst1)):
+                mosaic_img = np.vstack([np.hstack([img_lst1[k], img_lst2[k]]), np.hstack([img_lst3[k], img_lst4[k]])])
+                # 1. top left image of mosaic: no adjustment so skip
+                # note: height is the height of a single mosaic tile not the height of the total image
+                # 2. top right image of mosaic: (x1,y1,x2,y2) + (height, 0, height, 0)
+                # 3. bottom left image of mosaic: (x1,y1,x2,y2) + (0, height, 0, height)
+                # 4. bottom right image of mosaic: (x1,y1,x2,y2) + (height, height, height, height)
+                # 5. we add an additional 0 at the end to not change the class 
+                #print(bboxes_lst2[k])
+                mosaic_bbox = np.vstack([bboxes_lst1[k], bboxes_lst2[k] + [height , 0, height, 0, 0], bboxes_lst3[k] + [0, height, 0, height, 0], bboxes_lst4[k] + [height, height, height, height, 0]])
+                
+                # base augmentations to ensure consistency, normalization and yolo format
+                mosaic_img = AugmentImage.resize(mosaic_img, image_size)
+                # convert brg to rgb
+                mosaic_img = cv.cvtColor(mosaic_img, cv.COLOR_BGR2RGB)
+                # normalise # consistent with ImageNet backbone
+                mosaic_img = AugmentImage.normalize(mosaic_img) #, mean = [0.485, 0.456, 0.406], std = [0.229, 0.244, 0.255])
+                #image = Image.fromarray(image)
+
+                # convert opencv pascalvoc format to yolo
+                mosaic_bbox = AugmentBoundingBox.opencv_to_yolo(mosaic_bbox, image_size, image_size)
+                final_images.append(mosaic_img)
+                final_bboxes.append(mosaic_bbox)
+
+            return final_images, final_bboxes
+        
+        if mosaic_size == 9:    
+            img_lst1, img_lst2, img_lst3 = [], [], []
+            img_lst4, img_lst5, img_lst6 = [], [], []
+            img_lst7, img_lst8, img_lst9 = [], [], []
+
+            bboxes_lst1, bboxes_lst2, bboxes_lst3 = [], [], []
+            bboxes_lst4, bboxes_lst5, bboxes_lst6 = [], [], []
+            bboxes_lst7, bboxes_lst8, bboxes_lst9 = [], [], []
+
+            for j in range(0, len(all_vid_frame_ids)):
+                # random seed to ensure consistent augmentation across sequence
+                random_seed = np.random.randint(0, 10000)
+                for i in range(0, len(all_vid_frame_ids[j]), all_sample_rates[j]):
+                    label_path = os.path.join(label_dir, all_vid_folder_ids[j], all_vid_frame_ids[j].iloc[i, 0]).replace("\\", "/")
+                    img_path = os.path.join(img_dir, all_vid_folder_ids[j], all_vid_frame_ids[j].iloc[i, 0]).replace("\\", "/").replace(".txt", ".JPEG")
+                    bboxes = np.roll(np.loadtxt(fname=label_path, delimiter=" ", ndmin=2), 4, axis=1).astype(np.float32)
+                    
+                    image = np.array(Image.open(img_path).convert("RGB"))
+                    image = AugmentImage.rgb_to_bgr(image)
+                    # resize image
+                    image = AugmentImage.resize(image, image_size // 3)
+                    height, width = image.shape[:2]
+                    # conver to opencv format for augmentations
+                    bboxes = AugmentBoundingBox.yolo_to_opencv(bboxes, width, height)
+                    # scale
+                    image, bboxes = AugmentImage.scale(image, bboxes, scale_factor = scale_factor, p = p_scale, seed = random_seed)
+                    # translate
+                    image, bboxes = AugmentImage.translate(image, bboxes, translate_factor = translate_factor, p = p_trans, seed = random_seed)
+                    # horizontal flip image
+                    image, bboxes = AugmentImage.horizontal_flip(image, bboxes, p = p_hflip, seed = random_seed)
+                    image, bboxes = AugmentImage.rotate(image, bboxes, rotation_angle = rotation_angle, p = p_rot, seed = random_seed)
+                    image, bboxes = AugmentImage.shear(image, bboxes, shear_angle = shear_angle, p = p_shear, seed = random_seed)
+                    image = AugmentImage.posterize(image, p = p_post, seed = random_seed)
+                    image = AugmentImage.greyscale(image, p = p_grey, seed = random_seed)
+                    image = AugmentImage.blur(image, p = p_blur, seed = random_seed)
+                    image = AugmentImage.clahe(image, p = p_clahe, seed = random_seed)
+                    image = AugmentImage.cutout(image, p = p_cutout, seed = random_seed)
+                    image = AugmentImage.hsv_augment(image, hgain = hgain, sgain = sgain, vgain = vgain, p = p_hsv, seed = random_seed)
+                    image = AugmentImage.shuffle_channel(image, p = p_shuffle, seed = random_seed)
+                    
+                    if j == 0:
+                        img_lst1.append(np.array(image))
+                        bboxes_lst1.append(bboxes)
+                    if j == 1:
+                        img_lst2.append(np.array(image))
+                        bboxes_lst2.append(bboxes)
+                    if j == 2:
+                        img_lst3.append(np.array(image))
+                        bboxes_lst3.append(bboxes)
+                    if j == 3:
+                        img_lst4.append(np.array(image))
+                        bboxes_lst4.append(bboxes)
+                    if j == 4:
+                        img_lst5.append(np.array(image))
+                        bboxes_lst5.append(bboxes)
+                    if j == 5:
+                        img_lst6.append(np.array(image))
+                        bboxes_lst6.append(bboxes)
+                    if j == 6:
+                        img_lst7.append(np.array(image))
+                        bboxes_lst7.append(bboxes)
+                    if j == 7:
+                        img_lst8.append(np.array(image))
+                        bboxes_lst8.append(bboxes)
+                    if j == 8:
+                        img_lst9.append(np.array(image))
+                        bboxes_lst9.append(bboxes)
+
+            # ensure img_lists have same length
+            img_lst1 = img_lst1[:seq_len] if len(img_lst1) > seq_len else img_lst1
+            img_lst2 = img_lst2[:seq_len] if len(img_lst2) > seq_len else img_lst2
+            img_lst3 = img_lst3[:seq_len] if len(img_lst3) > seq_len else img_lst3
+            img_lst4 = img_lst4[:seq_len] if len(img_lst4) > seq_len else img_lst4
+            img_lst5 = img_lst5[:seq_len] if len(img_lst5) > seq_len else img_lst5
+            img_lst6 = img_lst6[:seq_len] if len(img_lst6) > seq_len else img_lst6
+            img_lst7 = img_lst7[:seq_len] if len(img_lst7) > seq_len else img_lst7
+            img_lst8 = img_lst8[:seq_len] if len(img_lst8) > seq_len else img_lst8
+            img_lst9 = img_lst9[:seq_len] if len(img_lst9) > seq_len else img_lst9
+
+            # ensure bboxes have same length
+            bboxes_lst1 = bboxes_lst1[:seq_len] if len(bboxes_lst1) > seq_len else bboxes_lst1
+            bboxes_lst2 = bboxes_lst2[:seq_len] if len(bboxes_lst2) > seq_len else bboxes_lst2
+            bboxes_lst3 = bboxes_lst3[:seq_len] if len(bboxes_lst3) > seq_len else bboxes_lst3
+            bboxes_lst4 = bboxes_lst4[:seq_len] if len(bboxes_lst4) > seq_len else bboxes_lst4
+            bboxes_lst5 = bboxes_lst5[:seq_len] if len(bboxes_lst5) > seq_len else bboxes_lst5
+            bboxes_lst6 = bboxes_lst6[:seq_len] if len(bboxes_lst6) > seq_len else bboxes_lst6
+            bboxes_lst7 = bboxes_lst7[:seq_len] if len(bboxes_lst7) > seq_len else bboxes_lst7
+            bboxes_lst8 = bboxes_lst8[:seq_len] if len(bboxes_lst8) > seq_len else bboxes_lst8
+            bboxes_lst9 = bboxes_lst9[:seq_len] if len(bboxes_lst9) > seq_len else bboxes_lst9
+
+            # repeat from beginning if sequence is smaller than intended sequence len
+            for img_lst in [img_lst1, img_lst2, img_lst3, img_lst4, img_lst5, img_lst6, img_lst7, img_lst8, img_lst9]:
+                while len(img_lst) < seq_len:
+                    imgs_to_add = seq_len - len(img_lst)
+                    img_lst.extend(img_lst[:imgs_to_add])
+
+            for bboxes_lst in [bboxes_lst1, bboxes_lst2, bboxes_lst3, bboxes_lst4, bboxes_lst5, bboxes_lst6, bboxes_lst7, bboxes_lst8, bboxes_lst9]:
+                while len(bboxes_lst) < seq_len:
+                    bboxes_to_add = seq_len - len(bboxes_lst)
+                    bboxes_lst.extend(bboxes_lst[:bboxes_to_add])
+
+            # store mosaiced img and bboxes as list to create sequence
+            for k in range(len(img_lst1)):
+
+                mosaic_img = np.vstack([np.hstack([img_lst1[k], img_lst2[k], img_lst3[k]]),
+                                   np.hstack([img_lst4[k], img_lst5[k], img_lst6[k]]),
+                                   np.hstack([img_lst7[k], img_lst8[k], img_lst9[k]])])
+
+                # 1.top left image of mosaic: no adjustment so skip
+                # note: height is the height of a single mosaic tile not the height of the total image
+                # 2.top middle image of mosaic: (x1,y1,x2,y2) + (height, 0, height, 0)
+                # 3.top right image of mosaic: (x1,y1,x2,y2) + (height*2, 0, height*2)
+                # 4.middle left image of mosaic: (x1,y1,x2,y2) + (0, height, 0, height)
+                # 5.middle middle image of mosaic: (x1,y1,x2,y2) + (height, height, height, height)
+                # 6.middle right image of mosaic: (x1,y1,x2,y2) + (height*2, height, height*2, height)
+                # 7.bottom left image of mosaic: (x1,y1,x2,y2) + (0, height*2, 0, height*2)
+                # 8.bottom middle  image of mosaic: (x1,y1,x2,y2) + (height, height*2, height, height*2)
+                # 9.bottom right image of mosaic: (x1,y1,x2,y2) + (height*2, height*2, height*2, height*2)
+                # 10. we add an additional 0 at the end to not change the class 
+                mosaic_bbox = np.vstack([bboxes_lst1[k], 
+                                         bboxes_lst2[k] + [height , 0, height, 0, 0], 
+                                         bboxes_lst3[k] + [height*2, 0, height*2, 0, 0], 
+                                         bboxes_lst4[k] + [0, height, 0, height, 0],
+                                         bboxes_lst5[k] + [height, height, height, height, 0],
+                                         bboxes_lst6[k] + [height*2, height, height*2, height, 0],
+                                         bboxes_lst7[k] + [0, height*2, 0, height*2, 0],
+                                         bboxes_lst8[k] + [height, height*2, height, height*2, 0],
+                                         bboxes_lst9[k] + [height*2, height*2, height*2, height*2, 0]])
+                
+                # base augmentations to ensure consistency, normalization and yolo format
+                mosaic_img = AugmentImage.resize(mosaic_img, image_size)
+                # convert brg to rgb
+                mosaic_img = cv.cvtColor(mosaic_img, cv.COLOR_BGR2RGB)
+                # normalise # consistent with ImageNet backbone
+                mosaic_img = AugmentImage.normalize(mosaic_img) #, mean = [0.485, 0.456, 0.406], std = [0.229, 0.244, 0.255])
+                #image = Image.fromarray(image)
+
+                # convert opencv pascalvoc format to yolo
+                mosaic_bbox = AugmentBoundingBox.opencv_to_yolo(mosaic_bbox, image_size, image_size)
+                final_images.append(mosaic_img)
+                final_bboxes.append(mosaic_bbox)
+
+            return final_images, final_bboxes
+        
+    def mixup_seq(image_size, img_dir,
+            label_dir,
+            vid_id_csv, 
+            frame_ids_dir,
+            p_scale = 1.0, scale_factor = 0.9,
+            p_trans = 1.0, translate_factor = 0.1,
+            p_rot = 0.3, rotation_angle = 45.0,
+            p_shear = 0.0, shear_angle = 10.0,
+            p_hflip = 0.5,
+            p_hsv = 1.0, hgain = 0.015, sgain = 0.7, vgain = 0.4,
+            p_grey = 0.1,
+            p_blur = 0.1,
+            p_clahe = 0.1,
+            p_cutout = 0.0,
+            p_shuffle = 0.1,
+            p_post = 0.1,
+            seq_len = 2):
+            
+        all_vid_frame_ids = []
+        all_vid_frame_ids_paths = []
+        all_sample_rates = []
+        all_vid_folder_ids = []
+
+        for i in range(2):
+            random_index = random.randint(0, len(vid_id_csv) - 1)
+            vid_folder_id = vid_id_csv.iloc[random_index, 0] #random.choice([line.strip() for line in open(vid_id_csv)])
+            #print("Mixup vid_folder_id:", vid_folder_id)
+            #print("Mixup frame_ids_dir:", frame_ids_dir)
+            vid_frame_ids_path = frame_ids_dir + vid_folder_id
+            vid_frame_ids = pd.read_csv(f'{vid_frame_ids_path}.csv')
+            sampling_rate = sampling_rate = max(1, len(vid_frame_ids) // seq_len)
+            all_vid_frame_ids.append(vid_frame_ids)
+            all_vid_frame_ids_paths.append(vid_frame_ids_path)
+            all_sample_rates.append(sampling_rate)
+            all_vid_folder_ids.append(vid_folder_id)
+
+        img_lst1, img_lst2 = [], []
+        bboxes_lst1, bboxes_lst2 = [], []
+        final_images = []
+        final_bboxes = []
+
+        for j in range(0, len(all_vid_frame_ids)):
+            # random seed to ensure consistent augmentation across sequence
+            random_seed = np.random.randint(0, 10000)
+            for i in range(0, len(all_vid_frame_ids[j]), all_sample_rates[j]):
+                label_path = os.path.join(label_dir, all_vid_folder_ids[j], all_vid_frame_ids[j].iloc[i, 0]).replace("\\", "/")
+                img_path = os.path.join(img_dir, all_vid_folder_ids[j], all_vid_frame_ids[j].iloc[i, 0]).replace("\\", "/").replace(".txt", ".JPEG")
+                bboxes = np.roll(np.loadtxt(fname=label_path, delimiter=" ", ndmin=2), 4, axis=1).astype(np.float32)
+                    
+                image = np.array(Image.open(img_path).convert("RGB"))
+                image = AugmentImage.rgb_to_bgr(image)
+                # resize image
+                image = AugmentImage.resize(image, image_size)
+                height, width = image.shape[:2]
+                # conver to opencv format for augmentations
+                bboxes = AugmentBoundingBox.yolo_to_opencv(bboxes, width, height)
+                # scale
+                image, bboxes = AugmentImage.scale(image, bboxes, scale_factor = scale_factor, p = p_scale, seed = random_seed)
+                # translate
+                image, bboxes = AugmentImage.translate(image, bboxes, translate_factor = translate_factor, p = p_trans, seed = random_seed)
+                # horizontal flip image
+                image, bboxes = AugmentImage.horizontal_flip(image, bboxes, p = p_hflip, seed = random_seed)
+                image, bboxes = AugmentImage.rotate(image, bboxes, rotation_angle = rotation_angle, p = p_rot, seed = random_seed)
+                image, bboxes = AugmentImage.shear(image, bboxes, shear_angle = shear_angle, p = p_shear, seed = random_seed)
+                image = AugmentImage.posterize(image, p = p_post, seed = random_seed)
+                image = AugmentImage.greyscale(image, p = p_grey, seed = random_seed)
+                image = AugmentImage.blur(image, p = p_blur, seed = random_seed)
+                image = AugmentImage.clahe(image, p = p_clahe, seed = random_seed)
+                image = AugmentImage.cutout(image, p = p_cutout, seed = random_seed)
+                image = AugmentImage.hsv_augment(image, hgain = hgain, sgain = sgain, vgain = vgain, p = p_hsv, seed = random_seed)
+                image = AugmentImage.shuffle_channel(image, p = p_shuffle, seed = random_seed)
+                    
+                if j == 0:
+                    img_lst1.append(np.array(image))
+                    bboxes_lst1.append(bboxes)
+
+                if j == 1:
+                    img_lst2.append(np.array(image))
+                    bboxes_lst2.append(bboxes)
+
+        # ensure img_lists have same length
+        img_lst1 = img_lst1[:seq_len] if len(img_lst1) > seq_len else img_lst1
+        img_lst2 = img_lst2[:seq_len] if len(img_lst2) > seq_len else img_lst2
+
+        # ensure bboxes have same length
+        bboxes_lst1 = bboxes_lst1[:seq_len] if len(bboxes_lst1) > seq_len else bboxes_lst1
+        bboxes_lst2 = bboxes_lst2[:seq_len] if len(bboxes_lst2) > seq_len else bboxes_lst2
+
+        # repeat from beginning if sequence is smaller than intended sequence len
+        for img_lst in [img_lst1, img_lst2]:
+            while len(img_lst) < seq_len:
+                imgs_to_add = seq_len - len(img_lst)
+                img_lst.extend(img_lst[:imgs_to_add])
+
+        for bboxes_lst in [bboxes_lst1, bboxes_lst2]:
+            while len(bboxes_lst) < seq_len:
+                bboxes_to_add = seq_len - len(bboxes_lst)
+                bboxes_lst.extend(bboxes_lst[:bboxes_to_add])
+                        
+        for k in range(len(img_lst1)):
+            lambda_mix = np.random.beta(8.0, 8.0)
+            mixedup_img = (img_lst1[k] * lambda_mix + img_lst2[k] * (1 - lambda_mix)).astype(np.uint8)
+            mixedup_bbox = np.vstack([bboxes_lst1[k], bboxes_lst2[k]])
+            # base augmentations to ensure consistency, normalization and yolo format
+            mixedup_img = AugmentImage.resize(mixedup_img, image_size)
+            # convert brg to rgb
+            mixedup_img = cv.cvtColor(mixedup_img, cv.COLOR_BGR2RGB)
+            # normalise # consistent with ImageNet backbone
+            mixedup_img = AugmentImage.normalize(mixedup_img) #, mean = [0.485, 0.456, 0.406], std = [0.229, 0.244, 0.255])
+            #image = Image.fromarray(image)
+
+            # convert opencv pascalvoc format to yolo
+            mixedup_bbox = AugmentBoundingBox.opencv_to_yolo(mixedup_bbox, image_size, image_size)
+            final_images.append(mixedup_img)
+            final_bboxes.append(mixedup_bbox)
+
+        return final_images, final_bboxes
+            
 
 class AugmentBoundingBox:
     @staticmethod
@@ -468,8 +908,8 @@ class AugmentBoundingBox:
         eps = 1e-9
         original_area = AugmentBoundingBox.compute_area(bboxes)
         # clips bounding boxes to be within the image
-        # cliped below at 1 and above  at image -1  assuming 
-        # a square image of size image size by image size 
+        # cliped below at 1 and above  at image -1  assuming
+        # a square image of size image size by image size
         bboxes[:, :4] = np.clip(bboxes[:, :4], 1, img_size - 1, dtype=np.float32)
 
         new_area = AugmentBoundingBox.compute_area(bboxes)
@@ -481,9 +921,9 @@ class AugmentBoundingBox:
         aspect_ratios = np.maximum(widths / (heights + eps), heights / (widths + eps))
 
         # Mask out bounding boxes based on width and height threshold, min visbibility and aspect ratio
-        mask = ( (widths > width_height_threshold) & 
-                    (heights > width_height_threshold) & 
-                    (aspect_ratios < aspect_ratio_threshold) & 
+        mask = ( (widths > width_height_threshold) &
+                    (heights > width_height_threshold) &
+                    (aspect_ratios < aspect_ratio_threshold) &
                     (area_dif < (1 - min_visibility))
                     ).astype(int)
 
@@ -493,15 +933,15 @@ class AugmentBoundingBox:
 
     def compute_corners(bboxes):
         c = (bboxes[:,4])[:, None]
-        # width: bottom corner right x2 - top left corner x1 
+        # width: bottom corner right x2 - top left corner x1
         width = (bboxes[:,2] - bboxes[:,0])[:, None]
-        # height: bottom 
+        # height: bottom
         height = (bboxes[:,3] - bboxes[:,1])[:, None]
         x1 = (bboxes[:,0])[:, None]
         y1 = (bboxes[:,1])[:, None]
         # compute top right corner values x2, y2
         x2 = x1 + width
-        y2 = y1 
+        y2 = y1
         # compute bottom left corner values x3, y3
         x3 = x1
         y3 = y1 + height
@@ -509,17 +949,17 @@ class AugmentBoundingBox:
         y4 = (bboxes[:,3])[:, None]
         corners = np.hstack((x1,y1,x2,y2,x3,y3,x4,y4,c))
         return corners
-    
+
     def corner_to_opencv(corners):
         c = (corners[:,8])[:,None]
-        x_corner_coords = corners[:,[0,2,4,6]] 
+        x_corner_coords = corners[:,[0,2,4,6]]
         y_corner_coords = corners[:,[1,3,5,7]]
         x1 = np.min(x_corner_coords,1)[:, None]
         y1 = np.min(y_corner_coords,1)[:, None]
         x2 = np.max(x_corner_coords,1)[:, None]
         y2 = np.max(y_corner_coords,1)[:, None]
         return np.hstack((x1, y1, x2, y2, c))
-        
+
     def opencv_to_yolo(bboxes, width, height):
         """
         Convert pascal voc or opencv bounding box coordinates to YOLO format.
@@ -546,7 +986,7 @@ class AugmentBoundingBox:
         w = (x2 - x1) / width
         h = (y2 - y1) / height
         # return yolo format: xcenter, ycenter, width, height normalised
-        return np.column_stack((x, y, w, h, c))
+        return np.round(np.column_stack((x, y, w, h, c)).astype(np.float32), 8)
 
     def yolo_to_opencv(bboxes, width, height):
         """
