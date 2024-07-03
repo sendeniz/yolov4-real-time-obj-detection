@@ -1,12 +1,14 @@
-# Sequence Models for Video Object Detection
+# YoloV4: Real-Time Object Detection on Still Images and Videos
  
 **General:**
 <br>
-This repo contains avarious base torch implementation of sequence models, such as a 1) Simple RNN, GRU RNN, LSTM RNN, HIPPO RNN and Transformer. They can either be used independently or embedded within a YoloV4 object detection, turning the still object detector into a video object detecting, since the sequence models are able to capture the spatio-temporal signal. A short demo of our detection system can be seen in Fig. 1. The full demonstration can be found [here](https://www.youtube.com/watch?v=Q30_ScFp8us). 
+This repo contains torch implementations for 1) YoloV4 and 2) Recurrent YoloV4 that utilize RNNs on the bounding box trajectories. The approach in 2) is novel since we are using a UR-LSTM and HiPPO LSTM to model temporal dependencies between consceucitive bounding box trajectories. 
+A short demo of our YoloV4 still image detection system trained on MS COCO 2017 can be seen in Fig. 1, where we use a scene from the movie Cheng Kung Express. The full demonstration can be found [here](https://www.youtube.com/watch?v=Q30_ScFp8us). 
+The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be seen in Fig. 2.
 
 <p align="center">
-  <img src="figures/yolov1_demo.gif" alt="animated" />
-  <figcaption>Fig.1 - Real-time inference using Yolo. </figcaption>
+  <img src="figures/yolov4_demo.gif" alt="animated" />
+  <figcaption>Fig.1 - Real-time inference using YoloV. </figcaption>
 </p>
 
 
@@ -20,7 +22,7 @@ This repo contains avarious base torch implementation of sequence models, such a
 .
 ├── application                # Real time inference tools
     └── __init__.py 
-    └── yolo_watches_you.py  		# Yolo inference on webcam or video you choose 
+    └── yolo_watches_you.py  		# Yolo inference on webcam or video you choose
 ├── cpts				# Weights as checkpoint .cpt files
     └── ...
     └── efficentnet_yolov4_mscoco.cpt	# Pretrained yolov4 still-image detector
@@ -65,5 +67,5 @@ virtualenv -p python3 venv
 source venv/bin/activate
 pip install -e .
 ```
-Depending on what libraries you may already have, you may wish to `pip install -r requirements.txt`. To run our validation or sanity check experiments the MNIST data set is requiered, which torch will download for you, so there is nothing you need to do for. However, to train the video object detector from scratch, you will need 1) the MS COCO VOC and 2) ImageNet VID data-set. You can download [MS COCO VOC]([http://host.robots.ox.ac.uk/pascal/VOC/](https://cocodataset.org/#home)) manually or by call the following shell file: `utils/get_mscocovoc_data.sh`, which will automatically download and sort the data into the approriate folders and format for training. For [ImageNet VID]([https://www.image-net.org/)) you will have to sign up, request access and download the data by following the website guide.
+Depending on what libraries you may already have, you may wish to `pip install -r requirements.txt`. To run our validation or sanity check experiments the MNIST data set is requiered, which torch will download for you, so there is nothing you need to do for. However, to train the video object detector from scratch, you will need 1) the MS COCO VOC and 2) ImageNet VID data-set. You can download [MS COCO VOC]([http://host.robots.ox.ac.uk/pascal/VOC/](https://cocodataset.org/#home)) manually or by calling the following shell file: `utils/get_mscocovoc_data.sh`, which will automatically download and sort the data into the approriate folders and format for training. For [ImageNet VID]([https://www.image-net.org/)) you will have to sign up, request access and download the data by following the website guide.
 
