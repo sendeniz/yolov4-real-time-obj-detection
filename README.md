@@ -8,7 +8,7 @@ The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be s
 
 <p align="center">
   <img src="figures/yolov4_demo.gif" alt="animated" />
-  <figcaption>Fig.1 - Real-time inference using YoloV. </figcaption>
+  <figcaption>Fig.1 - Real-time inference using YoloV4. </figcaption>
 </p>
 
 
