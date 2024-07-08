@@ -3,7 +3,7 @@
 **General:**
 <br>
 This repo contains torch implementations for 1) YoloV4 and 2) Recurrent YoloV4 that utilize RNNs on the bounding box trajectories. The approach in 2) is novel since we are using more recent RNNs, a UR-LSTM and HiPPO LSTM to model temporal dependencies between consceucitive bounding box trajectories. 
-A short demo of our YoloV4 still image detection system trained on MS COCO 2017 can be seen in Fig. 1. The full demonstration can be found [here](https://www.youtube.com/watch?v=Q30_ScFp8us). 
+A short demo of our YoloV4 still image detection system trained on MS COCO 2017 can be seen in Fig. 1. The full demonstration can be found [here](https://www.youtube.com/watch?v=KZBLCabnTH4). 
 The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be seen in Fig. 2.
 
 <p align="center">
