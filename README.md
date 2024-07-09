@@ -31,7 +31,7 @@ The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be s
     └── ....
 ├── loss                       # Custom PyTorch loss
     └── __init__.py  		
-    └── yolov3_loss.py
+    └── yolov4_loss.py
 ├── models                     # Pytorch models
     └── __init__.py  		
     └── rnn.py                 # Rnns in base torch (simple, gru, lstm)
