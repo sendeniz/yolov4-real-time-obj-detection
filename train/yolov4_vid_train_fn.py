@@ -3,7 +3,7 @@ from utils.utils import class_accuracy
 from torch.cuda.amp import autocast
 import torch.distributed as dist
 
-def trainyolov4_vid(
+def trainyolov4_vid_bptt(
     rank,
     train_loader,
     model,
@@ -122,7 +122,7 @@ def testyolov4_vid(rank,
     return (seq_loss, seq_class_acc, seq_noobj_acc, seq_obj_acc)
 
 
-def trainyolov4_vid_v2(
+def trainyolov4_vid_no_bptt(
     rank,
     train_loader,
     model,

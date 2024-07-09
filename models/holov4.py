@@ -138,7 +138,8 @@ class ScaledPrediction(nn.Module):
             maxlength = maxlength,
         )
 
-        self.scaled_pred5 = CnnBlock(channels, (nclasses + 5) * 3, kernel_size=1, padding=0)
+        #self.scaled_pred5 = CnnBlock(channels, channels * 2, kernel_size=3, padding=1)
+        self.scaled_pred6 = CnnBlock(channels, (nclasses + 5) * 3, kernel_size=1, padding=0)
         
     def forward(self, x, t, carry):
         out = self.scaled_pred1(x)
@@ -155,8 +156,8 @@ class ScaledPrediction(nn.Module):
         # last dim denotes chunk of how much to take in each time-step
         out = out.expand(-1, -1, out.shape[1])
 
-        out, carry = self.scaled_hippo_rnn_pred(xs=out, t=t, carry=carry)
-       
+        #out, carry = self.scaled_hippo_rnn_pred(xs=out, t=t, carry=carry)
+        out, carry = checkpoint(self.scaled_hippo_rnn_pred, out, t, carry, use_reentrant=False)
         # reshape flattened output to batchsize, channel // 4, scale // 2, scale // 2
         out = out.view(x.shape[0], x.shape[1] // 4, x.shape[2] // 2, x.shape[3] // 2)
         
@@ -166,11 +167,18 @@ class ScaledPrediction(nn.Module):
         out = self.upsample1(out)
       
         # final out 
-        out = self.scaled_pred5(out)
+        #out = self.scaled_pred5(out)
+        out = self.scaled_pred6(out)
        
         # reshape to create predictions
         out = out.reshape( x.shape[0], 3, self.nclasses + 5, x.shape[2], x.shape[3]).permute(0, 1, 3, 4, 2)
+        #print("Final out shape:", out.shape)
+        #print("box coords: preds: [..., 1:3] :", out[..., 1:3].shape)
+        #print("box coords: preds: [..., 3:5] :", out[..., 3:5].shape)
         return out, carry
+    
+    def get_rnn_parameters(self):
+        return self.scaled_hippo_rnn_pred.parameters()
 
 
 class ScaledPredictionScale3(nn.Module):
@@ -213,7 +221,8 @@ class ScaledPredictionScale3(nn.Module):
             maxlength = maxlength,
         )
 
-        self.scaled_pred4 = CnnBlock(channels, (nclasses + 5) * 3, kernel_size=1, padding=0)
+        #self.scaled_pred4 = CnnBlock(channels, channels * 2, kernel_size=3, padding=1)
+        self.scaled_pred5 = CnnBlock(channels, (nclasses + 5) * 3, kernel_size=1, padding=0)
         
     def forward(self, x, t, carry):
         out = self.scaled_pred1(x)
@@ -229,8 +238,8 @@ class ScaledPredictionScale3(nn.Module):
         # last dim denotes chunk of how much model takes each time-step of flattened representation
         out = out.expand(-1, -1, out.shape[1])
         
-        out, carry = self.scaled_hippo_rnn_pred(xs=out, t=t, carry=carry)
-        
+        #out, carry = self.scaled_hippo_rnn_pred(xs=out, t=t, carry=carry)
+        out, carry = checkpoint(self.scaled_hippo_rnn_pred, out, t, carry, use_reentrant=False)
         # reshape flattened output to batchsize, channel // 4, scale , scale
         out = out.view(x.shape[0], x.shape[1] // 4, x.shape[2], x.shape[3])
         
@@ -238,11 +247,14 @@ class ScaledPredictionScale3(nn.Module):
         out = torch.cat((out, downscale_out), dim=1)
         out = self.upsample1(out)
         # final out 
-        out = self.scaled_pred4(out)
-
+        #out = self.scaled_pred4(out)
+        out = self.scaled_pred5(out)
         # reshape to create predictions
         out = out.reshape(x.shape[0], 3, self.nclasses + 5, x.shape[2], x.shape[3]).permute(0, 1, 3, 4, 2)
         return out, carry
+    
+    def get_rnn_parameters(self):
+        return self.scaled_hippo_rnn_pred.parameters()
 
 
 class SpatialPyramidPooling(nn.Module):
@@ -416,6 +428,7 @@ class HoloV4_EfficentNet(nn.Module):
         # PaNet. Lastly the predictions are also made at 3 different scales.
         # We adjust the backbone to accomodate an efficentnet backbone. The
         # principle however stays the same.
+
         backbone_scale1 = checkpoint(
             self.efficientnetbackbone[0][:4], x, use_reentrant=False
         )
@@ -427,18 +440,52 @@ class HoloV4_EfficentNet(nn.Module):
             self.efficientnetbackbone[0][6:], backbone_scale2, use_reentrant=False
         )
 
-        x = self.yolov4coadaptation(backbone_scale3)
+        x = checkpoint(self.yolov4coadaptation, backbone_scale3, use_reentrant=False)
         ssp_out = self.yolov4neck[0](x)
-        panet_scale1, panet_scale2, panet_scale3 = self.yolov4neck[1](
-            backbone_scale1, backbone_scale2, ssp_out
+        
+        panet_scale1, panet_scale2, panet_scale3 = checkpoint(self.yolov4neck[1],
+            backbone_scale1, backbone_scale2, ssp_out, use_reentrant=False
         )
 
-        sclaed_pred1, carry1 = self.yolov4head[0](panet_scale1, t=t, carry=carry[0])
-        sclaed_pred2, carry2 = self.yolov4head[1](panet_scale2, t=t, carry=carry[1])
-        sclaed_pred3, carry3 = self.yolov4head[2](panet_scale3, t=t, carry=carry[2])
+        sclaed_pred1, carry1 = checkpoint(self.yolov4head[0], panet_scale1, t=t, carry=carry[0], use_reentrant=False)
+        sclaed_pred2, carry2 = checkpoint(self.yolov4head[1], panet_scale2, t=t, carry=carry[1], use_reentrant=False)
+        sclaed_pred3, carry3 = checkpoint(self.yolov4head[2], panet_scale3, t=t, carry=carry[2], use_reentrant=False)
 
         return (sclaed_pred3, sclaed_pred2, sclaed_pred1), (carry1, carry2, carry3)
+    
+    def get_rnn_parameters(self):
+        return list(self.yolov4head[0].get_rnn_parameters()) + \
+               list(self.yolov4head[1].get_rnn_parameters()) + \
+               list(self.yolov4head[2].get_rnn_parameters())
 
+    def get_non_rnn_parameters(self):
+        return list(set(self.parameters()) - set(self.get_rnn_parameters()))
+
+"""
+if __name__ == "__main__":
+    from torchinfo import summary 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    img_size = 608
+    nclasses = 30
+    batch_size = 3
+    hidden_size = 1024
+    
+    model = HoloV4_EfficentNet(
+        image_size=608, hidden_size=hidden_size, nclasses=nclasses, maxlength=1,
+    ).to(device)
+    input = {"x": torch.randn((batch_size, 3, img_size, img_size)).to(device), "t":0, "carry":((
+                torch.zeros(batch_size, hidden_size).to(device),
+                torch.zeros(batch_size, hidden_size).to(device),
+            ), (
+                torch.zeros(batch_size, hidden_size).to(device),
+                torch.zeros(batch_size, hidden_size).to(device),
+            ), (
+                torch.zeros(batch_size, hidden_size).to(device),
+                torch.zeros(batch_size, hidden_size).to(device),
+            ))}
+    summary(model=model, input_data=input)
+"""
 """
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

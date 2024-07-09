@@ -10,7 +10,7 @@ from models.yolov4 import YoloV4_EfficentNet
 from loss.yolov4loss import YoloV4Loss, YoloV4Loss2
 from utils.dataset_vid import ImageNetVidDataset
 from utils.utils import mean_average_precision, get_bounding_boxes_vid, class_accuracy
-from yolov4_vid_train_fn import trainyolov4_vid, testyolov4_vid, trainyolov4_vid_v2
+from yolov4_vid_train_fn import trainyolov4_vid_bptt, testyolov4_vid, trainyolov4_vid_no_bptt
 from torch.cuda.amp import GradScaler
 import os
 import sys
@@ -29,7 +29,7 @@ import datetime
 
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12354"
+    os.environ["MASTER_PORT"] = "12345"
 
     # initialize the process group 
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -54,23 +54,23 @@ def main(rank, world_size, args):
         [(0.06, 0.12), (0.12, 0.09), (0.12, 0.24)],
         [(0.02, 0.03), (0.03, 0.06), (0.07, 0.05)],
     ]
-    writer = SummaryWriter(log_dir="logs/results_yolo_vid/")
+    writer = SummaryWriter(log_dir="logs/results_yolo_vid_bptt/")
 
     train_dataset = ImageNetVidDataset(
-        csv_file="data/ILSVRC2015/Data/train1Kexamples.csv",
+        csv_file="data/ILSVRC2015/Data/train_max_80_frames.csv",
         img_dir="data/ILSVRC2015/Data/VID/train/",
         label_dir="data/ILSVRC2015/Data/labels/VID/train/",
-        vid_id_csv="data/ILSVRC2015/Data/labels/train_vid_id1Kexamples.csv",
+        vid_id_csv="data/ILSVRC2015/Data/labels/train_vid_id_max_80_frames.csv",
         frame_ids_dir="data/ILSVRC2015/Data/labels/train_frame_ids/",
         mode="train",
         seq_len=args.seq_len,
     )
 
     test_dataset = test_dataset = ImageNetVidDataset(
-        csv_file="data/ILSVRC2015/Data/val100examples.csv",
+        csv_file="data/ILSVRC2015/Data/val_max_80_frames.csv",
         img_dir="data/ILSVRC2015/Data/VID/val/",
         label_dir="data/ILSVRC2015/Data/labels/VID/val/",
-        vid_id_csv="data/ILSVRC2015/Data/labels/val_vid_id100examples.csv",
+        vid_id_csv="data/ILSVRC2015/Data/labels/val_vid_id_max_80_frames.csv",
         frame_ids_dir="data/ILSVRC2015/Data/labels/val_frame_ids/",
         mode="test",
         seq_len=args.seq_len,
@@ -101,68 +101,71 @@ def main(rank, world_size, args):
         drop_last=False,
         sampler=sampler_test,
     )
-    model = YoloV4_EfficentNet(nclasses=args.nclasses).to(rank)
-
-    ddp_model = DDP(model, device_ids=[rank], gradient_as_bucket_view=True)
-
-    if args.pretrained is True:
-        if dist.get_rank() == 0:
-            print("Loading pretrained weights...")
-
-        loaded_checkpoint = torch.load(
-            "cpts/yolov4_608_mscoco2017_pretrained.cpt",
-        )
-
-        # remove prediction head layer due to size mismatch
-        # caused by coco 80 classes and ilsvcr 30 classes
-        keys_to_remove = [
-            'module.yolov4head.0.scaled_pred.1.conv.weight',
-            'module.yolov4head.0.scaled_pred.1.conv.bias',
-            'module.yolov4head.0.scaled_pred.1.bn.weight',
-            'module.yolov4head.0.scaled_pred.1.bn.bias',
-            'module.yolov4head.0.scaled_pred.1.bn.running_mean',
-            'module.yolov4head.0.scaled_pred.1.bn.running_var',
-            'module.yolov4head.1.scaled_pred.1.conv.weight',
-            'module.yolov4head.1.scaled_pred.1.conv.bias',
-            'module.yolov4head.1.scaled_pred.1.bn.weight',
-            'module.yolov4head.1.scaled_pred.1.bn.bias',
-            'module.yolov4head.1.scaled_pred.1.bn.running_mean',
-            'module.yolov4head.1.scaled_pred.1.bn.running_var',
-            'module.yolov4head.2.scaled_pred.1.conv.weight',
-            'module.yolov4head.2.scaled_pred.1.conv.bias',
-            'module.yolov4head.2.scaled_pred.1.bn.weight',
-            'module.yolov4head.2.scaled_pred.1.bn.bias',
-            'module.yolov4head.2.scaled_pred.1.bn.running_mean',
-            'module.yolov4head.2.scaled_pred.1.bn.running_var'
-        ]
-
-        # Remove the keys from the state dictionary
-        for key in keys_to_remove:
-            del loaded_checkpoint["model_state_dict"][key]
-
-        if dist.get_rank() == 0:
-            print("Pretrained weights loaded")
-
-    # Load the checkpoint into the DDP model
-    ddp_model.load_state_dict(loaded_checkpoint["model_state_dict"], strict=False)
-
-    optimizer = optim.Adam(
-        ddp_model.parameters(),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-        betas=(args.momentum, 0.999),
-    )
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=args.lr,
-        epochs=args.nepochs,
-        # divide steps per epoch by gradient accumulation steps
-        steps_per_epoch=(len(train_loader) // (args.target_batch_size // (args.batch_size * args.ngpus))) + 1,
-        anneal_strategy="cos",
-    )
+    
     print(f"Rank:{rank} initalised")
     world_size = dist.get_world_size()
+
     for run in range(args.nruns):
+
+        model = YoloV4_EfficentNet(nclasses=args.nclasses).to(rank)
+        ddp_model = DDP(model, device_ids=[rank], gradient_as_bucket_view=True)
+
+        if args.pretrained is True:
+            if dist.get_rank() == 0:
+                print("Loading pretrained weights...")
+
+            loaded_checkpoint = torch.load(
+                "cpts/yolov4_608_mscoco2017_pretrained.cpt",
+            )
+
+            # remove prediction head layer due to size mismatch
+            # caused by coco 80 classes and ilsvcr 30 classes
+            keys_to_remove = [
+                'module.yolov4head.0.scaled_pred.1.conv.weight',
+                'module.yolov4head.0.scaled_pred.1.conv.bias',
+                'module.yolov4head.0.scaled_pred.1.bn.weight',
+                'module.yolov4head.0.scaled_pred.1.bn.bias',
+                'module.yolov4head.0.scaled_pred.1.bn.running_mean',
+                'module.yolov4head.0.scaled_pred.1.bn.running_var',
+                'module.yolov4head.1.scaled_pred.1.conv.weight',
+                'module.yolov4head.1.scaled_pred.1.conv.bias',
+                'module.yolov4head.1.scaled_pred.1.bn.weight',
+                'module.yolov4head.1.scaled_pred.1.bn.bias',
+                'module.yolov4head.1.scaled_pred.1.bn.running_mean',
+                'module.yolov4head.1.scaled_pred.1.bn.running_var',
+                'module.yolov4head.2.scaled_pred.1.conv.weight',
+                'module.yolov4head.2.scaled_pred.1.conv.bias',
+                'module.yolov4head.2.scaled_pred.1.bn.weight',
+                'module.yolov4head.2.scaled_pred.1.bn.bias',
+                'module.yolov4head.2.scaled_pred.1.bn.running_mean',
+                'module.yolov4head.2.scaled_pred.1.bn.running_var'
+            ]
+
+            # Remove the keys from the state dictionary
+            for key in keys_to_remove:
+                del loaded_checkpoint["model_state_dict"][key]
+
+            if dist.get_rank() == 0:
+                print("Pretrained weights loaded")
+
+        # Load the checkpoint into the DDP model
+        ddp_model.load_state_dict(loaded_checkpoint["model_state_dict"], strict=False)
+
+        optimizer = optim.Adam(
+            ddp_model.parameters(),
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+            betas=(args.momentum, 0.999),
+        )
+        scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=args.lr,
+            epochs=args.nepochs,
+            # divide steps per epoch by gradient accumulation steps
+            steps_per_epoch=(len(train_loader) // (args.target_batch_size // (args.batch_size))) + 1,
+            anneal_strategy="cos",
+        )
+    
         for epoch in range(args.nepochs):
             train_map, test_map = None, None
             train_recall, test_recall = None, None
@@ -171,7 +174,7 @@ def main(rank, world_size, args):
             # train
             scaler = GradScaler()
             train_loss, train_class_acc, train_noobj_acc, train_obj_acc = (
-                trainyolov4_vid(
+                trainyolov4_vid_bptt(
                     rank,
                     train_loader,
                     model,

@@ -4,7 +4,7 @@ import time
 import torch
 import torch.optim as optim
 import pyrealsense2 as rs  # Import RealSense SDK
-from utils.utils import non_max_suppression, get_bouding_boxes, cells_to_bboxes
+from utils.utils import non_max_suppression, cells_to_bboxes
 from models.yolov4 import YoloV4_EfficentNet
 from utils.utils import draw_bounding_box
 from utils.augmentations import AugmentImage
@@ -19,7 +19,7 @@ anchors = [
 
 scaled_anchors = torch.tensor(anchors) / ( 1 / torch.tensor(S).unsqueeze(1).unsqueeze(1).repeat(1, 3, 2) )
 
-conf_thresh = 0.8 #0.75 #0.7 #0.6 #0.5 #0.45 #0.5
+conf_thresh = 0.8
 nms_iou_thresh = 0.5
 map_iou_thresh = 0.5
 nworkers = 2

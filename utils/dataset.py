@@ -54,7 +54,6 @@ class CoCoDataset(Dataset):
     def __getitem__(self, index):
         label_path = os.path.join(self.label_dir, self.annotations.iloc[index, 1])
         bboxes = np.roll(np.loadtxt(fname = label_path, delimiter = " ", ndmin = 2), 4, axis = 1).astype(np.float32)
-        #print("print bboxes after loading:", bboxes)
 
         img_path = os.path.join(self.img_dir, self.annotations.iloc[index, 0])
         image = np.array(Image.open(img_path).convert("RGB"))
@@ -64,11 +63,11 @@ class CoCoDataset(Dataset):
         
         if self.mode == 'train':
             image, bboxes = augment_data(image, bboxes, image_size = self.image_size,
-                                         p_scale = 1.0,  scale_factor = 1.09,
-                                         p_trans = 1.0, translate_factor = 0.09,
+                                         p_scale = 1.0,  scale_factor = 0.9,
+                                         p_trans = 1.0, translate_factor = 0.1,
                                          p_rot = 0.3, rotation_angle = 45.0,
                                          p_shear = 0.3, shear_angle = 10.0,
-                                         p_hflip = 0.3, 
+                                         p_hflip = 0.5, 
                                          p_vflip = 0.0, 
                                          p_mixup = 0.3, 
                                          p_mosaic = 0.3,
@@ -76,7 +75,7 @@ class CoCoDataset(Dataset):
                                          p_grey = 0.1,
                                          p_blur = 0.1, 
                                          p_clahe = 0.1,  
-                                         p_cutout = 0.3, 
+                                         p_cutout = 0.0, 
                                          p_shuffle = 0.1,
                                          p_post = 0.1, mode = self.mode, 
                                          annotations_csv = self.csv_file,

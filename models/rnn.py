@@ -200,6 +200,7 @@ class HippoRNN(nn.Module):
                 torch.zeros(xs.shape[0], self.hidden_size).to(device),
             )
         
+        #for t in range(self.maxlength):
         for t in range(xs.size(1)):
             # for smnist
             # shape xs :=: (batchsize, 28*28, 1)
@@ -210,6 +211,7 @@ class HippoRNN(nn.Module):
             # Carry to hippo cell should be :-: shape: h_t :-: (batchsize, 1, N)
             carry = self.cell(x=xs[:, t, :], carry=carry, t=t)
             c_t = carry[1]
+
         return self.fc(c_t)
     
 class HippoRNN_v2(nn.Module):
@@ -218,8 +220,15 @@ class HippoRNN_v2(nn.Module):
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.maxlength =  maxlength
+        #print("input size:", input_size)
+        #print("output size:", output_size)
+        #print("max length size:", maxlength)
+        #print("hidden_size:", hidden_size)
         self.cell = GatedHippoCell_v2(input_size=input_size, hidden_size=hidden_size, maxlength=maxlength)
         self.fc = nn.Linear(hidden_size, output_size)
+
+        self.bn = nn.BatchNorm2d(3)
+        self.activation = nn.LeakyReLU(0.1)
 
         self.initialize_weights()
 
@@ -242,20 +251,153 @@ class HippoRNN_v2(nn.Module):
                 torch.zeros(xs.shape[0], self.hidden_size).to(device),
             )
         
-        # for loop that iterates over timesteps t within a sequence is part of training loop
+        channel = xs.shape[1]
+        scale = xs.shape[2]
+        xs = torch.flatten(xs, 1)
 
-        # shape xs :=: (batchsize, seq_len, input_size)
-        # shape xs[:, t, :] :=: (batchsize, input_size)
+        carry = self.cell(x=xs, carry=carry, t=t) 
 
-        # Input to hippo cell should be :-: shape: f_t :-: (batchsize, 1, 1)
-        # Carry to hippo cell should be :-: shape: c_t :-: (batchsize, 1, N)
-        # Carry to hippo cell should be :-: shape: h_t :-: (batchsize, N)
-        carry = self.cell(x=xs[:, t, :], carry=carry, t=t)
-        # carry = checkpoint(self.cell, xs[:, t, :], carry, t, use_reentrant=False)
         c_t = carry[1]
-        # out = self.fc(c_t)
-        out = checkpoint(self.fc, c_t, use_reentrant=False)
+        out = self.fc(c_t)
+        out = out.squeeze(1)
+        # from  batchsize, outputsize :-: batchsize, 3, scale, scale
+        out = out.reshape(xs.shape[0], channel, scale, scale)
+        out = self.bn(out)
+        out = self.activation(out)
+        # from  batchsize, outputsize :-: batchsize, 3, scale, scale, 1
+        out = out.unsqueeze(-1) 
+        return out, carry#, last_t
+
+class HippoRNN_v3(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, maxlength):
+        super(HippoRNN_v3, self).__init__()
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        #print("input size:", input_size)
+        #print("output size:", output_size)
+        #print("max length size:", maxlength)
+        #print("hidden_size:", hidden_size)
+        self.maxlength =  maxlength
+        self.cell = GatedHippoCell(input_size=input_size, hidden_size=hidden_size, maxlength=maxlength)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+        self.bn = nn.BatchNorm2d(3)
+        self.activation = nn.LeakyReLU(0.1)
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        std = 1.0 / np.sqrt(self.hidden_size)
+        for layer_name, layer in self.named_children():
+            if layer_name in ['i2h', 'h2h']:
+                for param_name, param in layer.named_parameters():
+                    if 'weight' in param_name:
+                        init.uniform_(param, -std, std)
+                    elif 'bias' in param_name:
+                        init.zeros_(param)
+
+    def forward(self, xs, carry=(None, None)):
+        if carry[0] is None:
+            carry = (
+                torch.zeros(xs.shape[0], self.hidden_size).to(device),
+                torch.zeros(xs.shape[0], self.hidden_size).to(device),
+            )
+        
+        channel = xs.shape[1]
+        scale = xs.shape[2]
+        xs = torch.flatten(xs, 1)
+        xs = xs.unsqueeze(-1)
+        #print("xs.shape:", xs.shape)
+        for t in range(self.maxlength):
+            # for smnist
+            # shape xs :=: (batchsize, 28*28, 1)
+            # shape xs[:, t, :] :=: (batchsize, 1)
+
+            # Input to hippo cell should be :-: shape: f_t :-: (batchsize, 1, 1)
+            # Carry to hippo cell should be :-: shape: c_t :-: (batchsize, 1, N)
+            # Carry to hippo cell should be :-: shape: h_t :-: (batchsize, 1, N)
+            carry = self.cell(x=xs[:, t, :], carry=carry, t=t)
+            c_t = carry[1]
+
+            #print("c_t shape:", c_t.shape)
+        out = self.fc(c_t)
+        #print("out shape:", out.shape)
+        out = out.squeeze(1)
+        #print("out unsqeeze shape:", out.shape)
+
+        out = out.reshape(xs.shape[0], channel, scale, scale)
+        #print("out reshape shape:", out.shape)
+        out = self.bn(out)
+        out = self.activation(out)
+        # from  batchsize, outputsize :-: batchsize, 3, scale, scale, 1
+        out = out.unsqueeze(-1)
+        #print("out final unsqueeze shape:", out.shape)
+
         return out, carry
+
+
+class UrLstmRNN_v2(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(UrLstmRNN_v2, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+
+        self.rnn_cell = UrLstmCell(self.input_size, self.hidden_size)
+        self.rnn_cell2 = UrLstmCell(self.hidden_size, self.hidden_size)
+        self.rnn_cell3 = UrLstmCell(self.hidden_size, self.hidden_size)
+        self.rnn_cell4 = UrLstmCell(self.hidden_size, self.hidden_size)
+        self.rnn_cell5 = UrLstmCell(self.hidden_size, self.hidden_size)
+        self.rnn_cell6 = UrLstmCell(self.hidden_size, self.hidden_size)
+
+        self.h2o = nn.Linear(self.hidden_size, self.output_size)
+
+        self.bn = nn.BatchNorm2d(3)
+        self.activation = nn.LeakyReLU(0.1)
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        def init_layer(layer):
+            std = 1.0 / np.sqrt(self.hidden_size)
+            for param_name, param in layer.named_parameters():
+                if 'weight' in param_name and 'forget_bias' not in param_name:
+                    init.uniform_(param, -std, std)
+                elif 'bias' in param_name and 'forget_bias' not in param_name:
+                    init.zeros_(param)
+
+        for rnn_layer in [self.rnn_cell, self.rnn_cell2, self.rnn_cell3, 
+                          self.rnn_cell4, self.rnn_cell5, self.rnn_cell6]:
+            init_layer(rnn_layer)
+        init_layer(self.h2o)
+
+
+    def forward(self, xs, t, carry=(None, None)):
+        '''
+        Inputs: input (torch tensor) of shape [batchsize, sequence length, inputsize]
+        Output: output (torch tensor) of shape [batchsize, outputsize]
+        '''
+        if carry[0] is None:
+            carry = (
+                torch.zeros(xs.shape[0], self.hidden_size).to(device),
+                torch.zeros(xs.shape[0], self.hidden_size).to(device),
+            )
+        channel = xs.shape[1]
+        scale = xs.shape[2]
+        xs = torch.flatten(xs, 1)
+        h_t, c_t = self.rnn_cell(xs, carry=carry)
+        h_t, c_t = self.rnn_cell2(h_t, carry=(h_t, c_t))
+        h_t, c_t = self.rnn_cell3(h_t, carry=(h_t, c_t))
+        h_t, c_t = self.rnn_cell4(h_t, carry=(h_t, c_t))
+        h_t, c_t = self.rnn_cell5(h_t, carry=(h_t, c_t))
+        h_t, c_t = self.rnn_cell6(h_t, carry=(h_t, c_t))
+
+        out = self.h2o(h_t)
+        out = out.reshape(xs.shape[0], channel, scale, scale)
+        out = self.bn(out)
+        out = self.activation(out)
+        out = out.unsqueeze(-1)
+        return out, (h_t, c_t)
 
 def test_rnn():
   # batch size, sequence length, input size

@@ -98,9 +98,10 @@ class ScaledPrediction(nn.Module):
     def forward(self, x):
         out = self.scaled_pred[0](x)
         out = self.scaled_pred[1](out)
-        return out.reshape(
+        out = out.reshape(
             x.shape[0], 3, self.nclasses + 5, x.shape[2], x.shape[3]
         ).permute(0, 1, 3, 4, 2)
+        return out
 
 
 class SpatialPyramidPooling(nn.Module):

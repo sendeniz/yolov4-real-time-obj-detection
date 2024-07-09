@@ -3,7 +3,7 @@ import numpy as np
 from collections import Counter
 import cv2 as cv
 import math
-#device = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def write_results(file_prefix, metrics, data_lists, run):
@@ -164,8 +164,7 @@ def mean_average_precision(rank, pred_boxes, true_boxes, iou_threshold=0.5, ncla
     precision_lst = []
     pred_boxes = torch.tensor(pred_boxes)
     true_boxes = torch.tensor(true_boxes)
-    #print("Pred boxes shape:", pred_boxes.shape)
-    #print("True boxes shape:", true_boxes.shape)
+
     # if no predictions return 0
     if pred_boxes.size(0) == 0:
        return torch.tensor(0.0).to(rank), torch.tensor(0.0).to(rank), torch.tensor(0.0).to(rank)
@@ -258,12 +257,12 @@ def mean_average_precision(rank, pred_boxes, true_boxes, iou_threshold=0.5, ncla
         recall_lst.append(recall)
         precision_lst.append(precision)
 
-    recall_val = sum(recall_lst) / len(recall_lst)
-    precision_val =  sum(precision_lst) / len(precision_lst)
-    map_val = sum(avg_precision) / len(avg_precision)
+    recall_val = sum(recall_lst) / len(recall_lst) if len(recall_lst) > 0 else torch.tensor(0.0)
+    precision_val = sum(precision_lst) / len(precision_lst) if len(precision_lst) > 0 else torch.tensor(0.0)
+    map_val = sum(avg_precision) / len(avg_precision) if len(avg_precision) > 0 else torch.tensor(0.0)
+
     # return map, recall and precision
     return map_val.to(rank), recall_val.to(rank), precision_val.to(rank)
-
 
 def non_max_suppression(boxes, iou_threshold, confidence_threshold):
     """Non-maximal surpression on yolo bounding boxes using intersection over union (IoU)
@@ -567,24 +566,72 @@ def class_accuracy(rank, model_pred, target, confidence_threshold):
     tot_class_preds, correct_class = 0, 0
     tot_noobj, correct_noobj = 0, 0
     tot_obj, correct_obj = 0, 0
+    with torch.no_grad():
+        for i in range(3):
+            target[i] = target[i].to(rank)
+            obj = target[i][..., 0] == 1 # in paper this is Iobj_i
+            noobj = target[i][..., 0] == 0  # in paper this is Iobj_i
 
-    for i in range(3):
-        target[i] = target[i].to(rank)
-        obj = target[i][..., 0] == 1 # in paper this is Iobj_i
-        noobj = target[i][..., 0] == 0  # in paper this is Iobj_i
+            correct_class += torch.sum(torch.argmax(model_pred[i][..., 5:][obj], dim=-1) == target[i][..., 5][obj])
+            tot_class_preds += torch.sum(obj)
 
-        correct_class += torch.sum(torch.argmax(model_pred[i][..., 5:][obj], dim=-1) == target[i][..., 5][obj])
-        tot_class_preds += torch.sum(obj)
+            obj_preds = torch.sigmoid(model_pred[i][..., 0]) > confidence_threshold
+            correct_obj += torch.sum(obj_preds[obj] == target[i][..., 0][obj])
+            tot_obj += torch.sum(obj)
+            correct_noobj += torch.sum(obj_preds[noobj] == target[i][..., 0][noobj])
+            tot_noobj += torch.sum(noobj)
 
-        obj_preds = torch.sigmoid(model_pred[i][..., 0]) > confidence_threshold
-        correct_obj += torch.sum(obj_preds[obj] == target[i][..., 0][obj])
-        tot_obj += torch.sum(obj)
-        correct_noobj += torch.sum(obj_preds[noobj] == target[i][..., 0][noobj])
-        tot_noobj += torch.sum(noobj)
+        class_acc = (correct_class / (tot_class_preds + 1e-16))
+        noobj_acc = (correct_noobj / (tot_noobj + 1e-16))
+        obj_acc = (correct_obj / (tot_obj + 1e-16))
+    return class_acc, noobj_acc, obj_acc
 
-    class_acc = (correct_class / (tot_class_preds + 1e-16))
-    noobj_acc = (correct_noobj / (tot_noobj + 1e-16))
-    obj_acc = (correct_obj / (tot_obj + 1e-16))
+def class_accuracy_dio(rank, model_pred, target, confidence_threshold):
+    tot_class_preds, correct_class = 0, 0
+    tot_noobj, correct_noobj = 0, 0
+    tot_obj, correct_obj = 0, 0
+    with torch.no_grad():
+        for i in range(2):
+            target[i] = target[i].to(rank)
+            obj = target[i][..., 0] == 1 # in paper this is Iobj_i
+            noobj = target[i][..., 0] == 0  # in paper this is Iobj_i
+
+            correct_class += torch.sum(torch.argmax(model_pred[i][..., 5:][obj], dim=-1) == target[i][..., 5][obj])
+            tot_class_preds += torch.sum(obj)
+
+            obj_preds = torch.sigmoid(model_pred[i][..., 0]) > confidence_threshold
+            correct_obj += torch.sum(obj_preds[obj] == target[i][..., 0][obj])
+            tot_obj += torch.sum(obj)
+            correct_noobj += torch.sum(obj_preds[noobj] == target[i][..., 0][noobj])
+            tot_noobj += torch.sum(noobj)
+
+        class_acc = (correct_class / (tot_class_preds + 1e-16))
+        noobj_acc = (correct_noobj / (tot_noobj + 1e-16))
+        obj_acc = (correct_obj / (tot_obj + 1e-16))
+    return class_acc, noobj_acc, obj_acc
+
+def class_accuracy_enas(rank, model_pred, target, confidence_threshold):
+    tot_class_preds, correct_class = 0, 0
+    tot_noobj, correct_noobj = 0, 0
+    tot_obj, correct_obj = 0, 0
+    with torch.no_grad():
+        for i in range(1):
+            target[i] = target[i].to(rank)
+            obj = target[i][..., 0] == 1 # in paper this is Iobj_i
+            noobj = target[i][..., 0] == 0  # in paper this is Iobj_i
+
+            correct_class += torch.sum(torch.argmax(model_pred[..., 5:][obj], dim=-1) == target[i][..., 5][obj])
+            tot_class_preds += torch.sum(obj)
+
+            obj_preds = torch.sigmoid(model_pred[..., 0]) > confidence_threshold
+            correct_obj += torch.sum(obj_preds[obj] == target[i][..., 0][obj])
+            tot_obj += torch.sum(obj)
+            correct_noobj += torch.sum(obj_preds[noobj] == target[i][..., 0][noobj])
+            tot_noobj += torch.sum(noobj)
+
+        class_acc = (correct_class / (tot_class_preds + 1e-16))
+        noobj_acc = (correct_noobj / (tot_noobj + 1e-16))
+        obj_acc = (correct_obj / (tot_obj + 1e-16))
     return class_acc, noobj_acc, obj_acc
 
 def cells_to_bboxes(predictions, anchors, S, is_preds=True):
@@ -601,30 +648,34 @@ def cells_to_bboxes(predictions, anchors, S, is_preds=True):
         list of lists: The converted boxes of sizes (N, num_anchors, S, S, 1+5) with class index,
                       object score, bounding box coordinates.
     """
-    batch_size = predictions.shape[0]
-    num_anchors = len(anchors)
-    box_predictions = predictions[..., 1:5]
-    if is_preds:
-        anchors = anchors.reshape(1, len(anchors), 1, 1, 2)
-        box_predictions[..., 0:2] = torch.sigmoid(box_predictions[..., 0:2])
-        box_predictions[..., 2:] = torch.exp(box_predictions[..., 2:]) * anchors
-        scores = torch.sigmoid(predictions[..., 0:1])
-        best_class = torch.argmax(predictions[..., 5:], dim=-1).unsqueeze(-1)
-    else:
-        scores = predictions[..., 0:1]
-        best_class = predictions[..., 5:6]
+    with torch.no_grad():
+        batch_size = predictions.shape[0]
+        num_anchors = len(anchors)
+        box_predictions = predictions[..., 1:5]
+        if is_preds:
+            anchors = anchors.reshape(1, len(anchors), 1, 1, 2)
+            box_predictions[..., 0:2] = torch.sigmoid(box_predictions[..., 0:2])
+            box_predictions[..., 2:] = torch.exp(box_predictions[..., 2:]) * anchors
+            scores = torch.sigmoid(predictions[..., 0:1])
+            best_class = torch.argmax(predictions[..., 5:], dim=-1).unsqueeze(-1)
+        else:
+            scores = predictions[..., 0:1]
+            best_class = predictions[..., 5:6]
 
-    cell_indices = (
-        torch.arange(S)
-        .repeat(predictions.shape[0], 3, S, 1)
-        .unsqueeze(-1)
-        .to(predictions.device)
-    )
-    x = 1 / S * (box_predictions[..., 0:1] + cell_indices)
-    y = 1 / S * (box_predictions[..., 1:2] + cell_indices.permute(0, 1, 3, 2, 4))
-    w_h = 1 / S * box_predictions[..., 2:4]
-    converted_bboxes = torch.cat((best_class, scores, x, y, w_h), dim=-1).reshape(batch_size, num_anchors * S * S, 6)
+        cell_indices = (
+            torch.arange(S)
+            .repeat(predictions.shape[0], 3, S, 1)
+            .unsqueeze(-1)
+            .to(predictions.device)
+        )
+
+        x = 1 / S * (box_predictions[..., 0:1] + cell_indices)
+        y = 1 / S * (box_predictions[..., 1:2] + cell_indices.permute(0, 1, 3, 2, 4))
+        w_h = 1 / S * box_predictions[..., 2:4]
+        converted_bboxes = torch.cat((best_class, scores, x, y, w_h), dim=-1).reshape(batch_size, num_anchors * S * S, 6)
+        
     return converted_bboxes.tolist()
+
 
 def get_bounding_boxes(rank, loader, model, iou_threshold, anchors, confidence_threshold):
     # make sure model is in eval before get bboxes
@@ -708,22 +759,22 @@ def get_bounding_boxes_vid(rank, loader, model, iou_threshold, anchors, confiden
     model.train()
     return all_pred_boxes, all_true_boxes
 
-def get_bounding_boxes_holo_vid(rank, loader, model, iou_threshold, anchors, confidence_threshold):
+
+def get_bounding_boxes_vid_dio(rank, loader, model, iou_threshold, anchors, confidence_threshold):
     # make sure model is in eval before get bboxes
     model.eval()
     train_idx = 0
     all_pred_boxes = []
     all_true_boxes = []
     for batch_idx, (x, y) in enumerate(loader):
-        carry = ((None, None), (None, None), (None, None))
         for seq_idx in range(len(x)):
             x_t = x[seq_idx].permute(0, 3, 1, 2)
             x_t = x_t.to(torch.float32).to(rank)
             with torch.no_grad():
-                predictions, carry = model(x_t, t=seq_idx, carry=carry)
+                predictions = model(x_t)
             batch_size = x_t.shape[0]
             bboxes = [[] for _ in range(batch_size)]
-            for i in range(3):
+            for i in range(2):
                 S = predictions[i].shape[2]
                 anchor = torch.tensor([*anchors[i]]).to(rank) * S
                 boxes_scale_i = cells_to_bboxes(
@@ -732,8 +783,9 @@ def get_bounding_boxes_holo_vid(rank, loader, model, iou_threshold, anchors, con
                 for idx, (box) in enumerate(boxes_scale_i):
                     bboxes[idx] += box
             # we just want one bbox for each label, not one for each scale
+ 
             true_bboxes = cells_to_bboxes(
-                y[seq_idx][2], anchor, S=S, is_preds=False
+                y[seq_idx][1], anchor, S=S, is_preds=False
             )
             for idx in range(batch_size):
                 nms_boxes = non_max_suppression(
@@ -749,6 +801,147 @@ def get_bounding_boxes_holo_vid(rank, loader, model, iou_threshold, anchors, con
                 train_idx += 1
     model.train()
     return all_pred_boxes, all_true_boxes
+
+def get_bounding_boxes_holo_dio_vid(rank, loader, model, iou_threshold, anchors, confidence_threshold):
+    # make sure model is in eval before get bboxes
+    model.eval()
+    train_idx = 0
+    all_pred_boxes = []
+    all_true_boxes = []
+    for batch_idx, (x, y) in enumerate(loader):
+        carry = (((None, None), (None, None), (None, None), (None, None)),
+        ((None, None), (None, None), (None, None), (None, None)),
+        )
+        for seq_idx in range(len(x)):
+            x_t = x[seq_idx].permute(0, 3, 1, 2)
+            x_t = x_t.to(torch.float32).to(rank)
+            with torch.no_grad():
+                predictions, carry = model(x_t, t=seq_idx, carry=carry)
+
+            batch_size = x_t.shape[0]
+            bboxes = [[] for _ in range(batch_size)]
+            for i in range(2):
+                S = predictions[i].shape[2]
+                anchor = torch.tensor([*anchors[i]]).to(rank) * S
+
+                boxes_scale_i = cells_to_bboxes(
+                    predictions[i], anchor, S=S, is_preds=True
+                )
+                for idx, (box) in enumerate(boxes_scale_i):
+                    bboxes[idx] += box
+            # we just want one bbox for each label, not one for each scale
+ 
+            true_bboxes = cells_to_bboxes(
+                y[seq_idx][1], anchor, S=S, is_preds=False
+            )
+            for idx in range(batch_size):
+                nms_boxes = non_max_suppression(
+                    bboxes[idx],
+                    iou_threshold=iou_threshold,
+                    confidence_threshold=confidence_threshold)
+
+                for nms_box in nms_boxes:
+                    all_pred_boxes.append([train_idx] + nms_box)
+                for box in true_bboxes[idx]:
+                    if box[1] > confidence_threshold:
+                        all_true_boxes.append([train_idx] + box)
+                train_idx += 1
+    model.train()
+    return all_pred_boxes, all_true_boxes
+
+
+def get_bounding_boxes_holo_enas_vid(rank, loader, model, iou_threshold, anchors, confidence_threshold):
+    # make sure model is in eval before get bboxes
+    model.eval()
+    train_idx = 0
+    all_pred_boxes = []
+    all_true_boxes = []
+    for batch_idx, (x, y) in enumerate(loader):
+        carry = ((None, None), (None, None), (None, None), (None, None))
+        last_ts = ((0), (0), (0), (0))
+        for seq_idx in range(len(x)):
+            x_t = x[seq_idx].permute(0, 3, 1, 2)
+            x_t = x_t.to(torch.float32).to(rank)
+            with torch.no_grad():
+                predictions, carry = model(x_t, t=seq_idx, carry=carry)
+
+            batch_size = x_t.shape[0]
+            bboxes = [[] for _ in range(batch_size)]
+            for i in range(1):
+                S = predictions.shape[2]       
+                anchor = torch.tensor([*anchors[i]]).to(rank) * S
+
+
+                boxes_scale_i = cells_to_bboxes(
+                    predictions, anchor, S=S, is_preds=True
+                )
+                for idx, (box) in enumerate(boxes_scale_i):
+                    bboxes[idx] += box
+            # we just want one bbox for each label, not one for each scale
+ 
+            true_bboxes = cells_to_bboxes(
+                y[seq_idx][0], anchor, S=S, is_preds=False
+            )
+            for idx in range(batch_size):
+                nms_boxes = non_max_suppression(
+                    bboxes[idx],
+                    iou_threshold=iou_threshold,
+                    confidence_threshold=confidence_threshold)
+
+                for nms_box in nms_boxes:
+                    all_pred_boxes.append([train_idx] + nms_box)
+                for box in true_bboxes[idx]:
+                    if box[1] > confidence_threshold:
+                        all_true_boxes.append([train_idx] + box)
+                train_idx += 1
+    model.train()
+    return all_pred_boxes, all_true_boxes
+
+def get_bounding_boxes_holo_vid(rank, loader, model, iou_threshold, anchors, confidence_threshold):
+    # Make sure model is in eval mode before getting bboxes
+    model.eval()
+    train_idx = 0
+    all_pred_boxes = []
+    all_true_boxes = []
+    
+    with torch.no_grad():
+        for batch_idx, (x, y) in enumerate(loader):
+            carry = ((None, None), (None, None), (None, None))
+            for seq_idx in range(len(x)):
+                x_t = x[seq_idx].permute(0, 3, 1, 2)
+                x_t = x_t.to(torch.float32).to(rank)
+                predictions, carry = model(x_t, t=seq_idx, carry=carry)
+                batch_size = x_t.shape[0]
+                bboxes = [[] for _ in range(batch_size)]
+                for i in range(3):
+                    S = predictions[i].shape[2]
+                    anchor = torch.tensor([*anchors[i]]).to(rank) * S
+                    boxes_scale_i = cells_to_bboxes(
+                        predictions[i], anchor, S=S, is_preds=True
+                    )
+                    for idx, box in enumerate(boxes_scale_i):
+                        bboxes[idx] += box
+                # We just want one bbox for each label, not one for each scale
+                true_bboxes = cells_to_bboxes(
+                    y[seq_idx][2], anchor, S=S, is_preds=False
+                )
+                for idx in range(batch_size):
+                    nms_boxes = non_max_suppression(
+                        bboxes[idx],
+                        iou_threshold=iou_threshold,
+                        confidence_threshold=confidence_threshold
+                    )
+
+                    for nms_box in nms_boxes:
+                        all_pred_boxes.append([train_idx] + nms_box)
+                    for box in true_bboxes[idx]:
+                        if box[1] > confidence_threshold:
+                            all_true_boxes.append([train_idx] + box)
+                    train_idx += 1
+    
+    model.train()
+    return all_pred_boxes, all_true_boxes
+
 
 
 def linearly_increasing_lr(initial_lr, final_lr, current_epoch, total_epochs):

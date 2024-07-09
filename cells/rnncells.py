@@ -158,11 +158,12 @@ class UrLstmCell(nn.Module):
 
         # carry
         h_t_1, c_t_1 = carry
+
         gates_i = self.i2h(x)
+
         gates_h = self.h2h(h_t_1)
 
         f, r, u, o = torch.split(gates_i + gates_h, self.hidden_size, dim=-1)
-
 
         f_ = torch.sigmoid(f + self.forget_bias)
         r_ = torch.sigmoid(r - self.forget_bias)

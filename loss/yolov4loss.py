@@ -77,6 +77,7 @@ class YoloV4Loss2(nn.Module):
         obj_mask = target[..., 0] == 1  # in paper this is Iobj_i
         noobj_mask = target[..., 0] == 0  # in paper this is Inoobj_i
         # no object loss
+
         no_object_loss = self.bce(
             (preds[..., 0:1][noobj_mask]), (target[..., 0:1][noobj_mask]),
         )
@@ -103,8 +104,10 @@ class YoloV4Loss2(nn.Module):
         # compute objectness loss
         object_loss = self.bce(preds[..., 0:1][obj_mask], target[..., 0:1][obj_mask]*iou.detach().clamp(0))
         #  bounding box coordinate loss
-        preds[..., 1:3] = self.sigmoid(preds[..., 1:3])  # x,y coordinates
-        target[..., 3:5] = torch.log( (1e-16 + target[..., 3:5] / anchors) )  # width, height coordinates
+        # x,y coordinates
+        preds[..., 1:3] = self.sigmoid(preds[..., 1:3])
+        # width, height coordinates
+        target[..., 3:5] = torch.log( (1e-16 + target[..., 3:5] / anchors) )  
         box_loss = self.bce(preds[..., 1:3][obj_mask],
                             target[..., 1:3][obj_mask])
         box_loss += self.mse(preds[..., 3:5][obj_mask],

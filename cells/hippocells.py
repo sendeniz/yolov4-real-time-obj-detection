@@ -6,6 +6,7 @@ from torch.utils.checkpoint import checkpoint
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
+
 class HippoLegsCell(nn.Module):
     '''
     Hippo class utilizing legs polynomial
@@ -223,7 +224,7 @@ class HippoLstmCell(nn.Module):
         # carry
         h_t_1, c_t_1 = carry
         gates_i = self.i2h(x)
-        gates_h = self.h2h(torch.cat((x[:, :self.input_chunk], h_t_1), dim=-1))
+        gates_h = self.h2h(torch.cat((x[:, :1], h_t_1), dim=-1))
         # shape: x :-: (batchsize, 1)
         # shape: h_t_1 :-: (batchsize, hiddensize)
         # shape: c_t_1 :-: (batchsize, hiddensize)
@@ -258,8 +259,8 @@ class HippoLegSCell(nn.Module):
         self.maxlength = maxlength
         A, self._B = self.get_A_and_B(N = self.N)
         GBTA, GBTB = self.get_stacked_GBT(A = A, B = self._B)
-        self.A = torch.from_numpy(GBTA).to(device)
-        self.B = torch.from_numpy(GBTB).to(device)
+        self.A = torch.from_numpy(GBTA).to(device).requires_grad_(False)
+        self.B = torch.from_numpy(GBTB).to(device).requires_grad_(False)
         self.reconst = reconst
 
     def compute_A(self, n, k):
@@ -428,8 +429,6 @@ class HippoLegSCell(nn.Module):
         if t == 0:
             c_t = c_t.float().unsqueeze(1)
 
-        #print(f"A[{t}]:", self.A[t].float())
-        #print(f"B[{t}]:", self.B[t].float())
         c_t = F.linear(c_t.float(), self.A[t]).float() + self.B[t].squeeze(-1) * input
         # shape: F.linear(torch.tensor(c_t).float(), torch.tensor(A[t])) :-: (batchsize, 1, N)
         # shape: (np.squeeze(B[t], -1) * f_t.numpy()).shape) :-: (batchsize, 1, N)
@@ -491,6 +490,7 @@ class GatedHippoCell(nn.Module):
             tau_x = torch.cat((x, c_t_1.squeeze(1)), dim=-1)
 
         h_t, _ = self.tau(x = tau_x, carry=(carry[0], carry[1].squeeze(1)))
+
         # tau is an lstm cell that only retains a single gate i.e., outputgate:
         # shape: x :-: (batchsize, 1)
         # shape: h_t_1 :-: (batchsize, hiddensize)
@@ -501,6 +501,7 @@ class GatedHippoCell(nn.Module):
         # shape: c_t :-: (batchsize, hiddensize)
 
         f_t = self.fc(torch.cat((x, h_t), dim=-1))
+
         # shape: h_t :-: (batchsize, hiddensize)
         # shape: h_t :-: (batchsize, hiddensize)
         c_t, _ = self.hippo_t(f_t.unsqueeze(-1), c_t_1, t=t)
@@ -514,12 +515,11 @@ class HippoLstmCell_v2(nn.Module):
     def __init__(self, input_size, hidden_size, activation = "tanh"):
         super(HippoLstmCell_v2, self).__init__()
         self.input_size = input_size
-        #print("HippoLSMT Input size:", input_size)
-        #print("HippoLSMT hidden size:", hidden_size)
+
         self.hidden_size = hidden_size
         self.input_chunk = input_size - hidden_size
         self.i2h = nn.Linear(input_size, hidden_size)
-        self.h2h = nn.Linear(input_size, hidden_size)
+        self.h2h = nn.Linear(input_size + hidden_size, hidden_size)
         self.activation = activation
         if self.activation not in ["tanh", "relu", "sigmoid"]:
             raise ValueError("Invalid nonlinearity selected for RNN. Please use tanh, relu, or sigmoid.")
@@ -532,13 +532,11 @@ class HippoLstmCell_v2(nn.Module):
         '''
         # carry
         h_t_1, c_t_1 = carry
-        #print("x.shape:", x.shape)
+       
         gates_i = self.i2h(x)
-        #print("After gate i.")
-        #gates_i = checkpoint(self.i2h, x, use_reentrant=False)
-        #gates_h = self.h2h(torch.cat((x[:, :self.input_chunk], h_t_1), dim=-1))
-        #print("torch cat shape:", torch.cat((x[:, :self.input_chunk], h_t_1), dim=-1).shape)
-        gates_h = checkpoint(self.h2h, torch.cat((x[:, :self.input_chunk], h_t_1), dim=-1), use_reentrant=False)
+     
+        gates_h = checkpoint(self.h2h, torch.cat((x, h_t_1), dim=-1), use_reentrant=False)
+
         # shape: x :-: (batchsize, 1)
         # shape: h_t_1 :-: (batchsize, hiddensize)
         # shape: c_t_1 :-: (batchsize, hiddensize)
@@ -600,16 +598,23 @@ class GatedHippoCell_v2(nn.Module):
                 torch.zeros(x.shape[0], 1, self.hidden_size).to(device),
                 torch.zeros(x.shape[0], 1, self.hidden_size).to(device),
             )
-        h_t, c_t_1 = carry
 
-        if t == 0:
+
+        h_t, c_t_1 = carry
+        
+      
+        if t == 0: 
+            if c_t_1.size(1) == 1:
+                c_t_1 = c_t_1.squeeze(1)
+
             tau_x = torch.cat((x, c_t_1), dim=-1)
+
+
         if t > 0:
             tau_x = torch.cat((x, c_t_1.squeeze(1)), dim=-1)
-
-        #print("tau x shape:", tau_x.shape)
+            
         h_t, _ = self.tau(x = tau_x, carry=(carry[0], carry[1].squeeze(1)))
-        #h_t, _ = checkpoint(self.tau, tau_x, (carry[0], carry[1].squeeze(1)), use_reentrant=False)
+       
         # tau is an lstm cell that only retains a single gate i.e., outputgate:
         # shape: x :-: (batchsize, 1)
         # shape: h_t_1 :-: (batchsize, hiddensize)
@@ -620,9 +625,10 @@ class GatedHippoCell_v2(nn.Module):
         # shape: c_t :-: (batchsize, hiddensize)
 
         f_t = self.fc(torch.cat((x, h_t), dim=-1))
-        #f_t = checkpoint(self.fc, torch.cat((x, h_t), dim=-1), use_reentrant=False)
+
         # shape: h_t :-: (batchsize, hiddensize)
         # shape: h_t :-: (batchsize, hiddensize)
+
         c_t, _ = self.hippo_t(f_t.unsqueeze(-1), c_t_1, t=t)
         # update previous coefficents to be current coefficents
         c_t_1 = c_t

@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from models.holov4 import HoloV4_EfficentNet
+from models.holov4_v2 import HoloV4_EfficentNet_v2
 from loss.yolov4loss import YoloV4Loss, YoloV4Loss2
 from utils.dataset_vid import ImageNetVidDataset
 from utils.utils import (
@@ -14,7 +15,7 @@ from utils.utils import (
     get_bounding_boxes_holo_vid,
     class_accuracy,
 )
-from holov4_vid_train_fn import trainholov4_vid, testholov4_vid
+from holov4_vid_train_fn import trainholov4_vid_bptt, testholov4_vid, trainholov4_vid_sep_scheduler
 # use testholov4_vid for v2
 from holov4_vid_train_fn import trainholov4_vid_v2 
 from holov4_vid_train_fn import trainholov4_vid_v3, testholov4_vid_v3
@@ -35,7 +36,7 @@ import datetime
 
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12354"
+    os.environ["MASTER_PORT"] = "15234"
 
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -60,24 +61,24 @@ def main(rank, world_size, args):
         [(0.06, 0.12), (0.12, 0.09), (0.12, 0.24)],
         [(0.02, 0.03), (0.03, 0.06), (0.07, 0.05)],
     ]
-    writer = SummaryWriter(log_dir="logs/results_holo_vid/")
+    writer = SummaryWriter(log_dir="logs/results_holo_vid_bptt/")
 
     train_dataset = ImageNetVidDataset(
-        csv_file="data/ILSVRC2015/Data/train100examples.csv",
+        csv_file="data/ILSVRC2015/Data/train_max_80_frames.csv",
         img_dir="data/ILSVRC2015/Data/VID/train/",
         label_dir="data/ILSVRC2015/Data/labels/VID/train/",
-        vid_id_csv="data/ILSVRC2015/Data/labels/train_vid_id100examples.csv",
+        vid_id_csv="data/ILSVRC2015/Data/labels/train_vid_id_max_80_frames.csv",
         frame_ids_dir="data/ILSVRC2015/Data/labels/train_frame_ids/",
         mode="train",
         seq_len=args.seq_len,
     )
 
     test_dataset = test_dataset = ImageNetVidDataset(
-        csv_file="data/ILSVRC2015/Data/train10examples.csv",
-        img_dir="data/ILSVRC2015/Data/VID/train/",
-        label_dir="data/ILSVRC2015/Data/labels/VID/train/",
-        vid_id_csv="data/ILSVRC2015/Data/labels/train_vid_id10examples.csv",
-        frame_ids_dir="data/ILSVRC2015/Data/labels/train_frame_ids/",
+        csv_file="data/ILSVRC2015/Data/val_max_80_frames.csv",
+        img_dir="data/ILSVRC2015/Data/VID/val/",
+        label_dir="data/ILSVRC2015/Data/labels/VID/val/",
+        vid_id_csv="data/ILSVRC2015/Data/labels/val_vid_id_max_80_frames.csv",
+        frame_ids_dir="data/ILSVRC2015/Data/labels/val_frame_ids/",
         mode="test",
         seq_len=args.seq_len,
     )
@@ -107,9 +108,9 @@ def main(rank, world_size, args):
         drop_last=False,
         sampler=sampler_test,
     )
-    model = HoloV4_EfficentNet(
+    model = HoloV4_EfficentNet_v2(
         image_size=608,
-        hidden_size=args.hidden_size,
+        #hidden_size=args.hidden_size,
         nclasses=args.nclasses,
         maxlength=args.seq_len,
     ).to(rank)
@@ -157,12 +158,32 @@ def main(rank, world_size, args):
     # Load the checkpoint into the DDP model
     ddp_model.load_state_dict(loaded_checkpoint["model_state_dict"], strict=False)
 
+    
     optimizer = optim.Adam(
         ddp_model.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay,
         betas=(args.momentum, 0.999),
     )
+
+    """
+    optimizer = optim.AdamW([
+        {
+            'params': ddp_model.module.get_non_rnn_parameters(),
+            'lr': args.lr,
+            'weight_decay': args.weight_decay,
+            'betas': (args.momentum, 0.999)
+        },
+        {
+            'params': ddp_model.module.get_rnn_parameters(),
+            'lr': 1e-3,  # Example different learning rate
+            'weight_decay': 0.000,  # Example different weight decay
+            'betas': (0.9, 0.999)  # Example different momentum
+        }
+    ])
+    """
+
+    # non_rnn_scheduler
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=args.lr,
@@ -175,6 +196,10 @@ def main(rank, world_size, args):
         + 1,
         anneal_strategy="cos",
     )
+
+    #rnn_scheduler
+    #scheduler2 = optim.lr_scheduler.LambdaLR(optimizer, lambda epoch: 1.0)  # Constant LR
+
     print(f"Rank:{rank} initalised")
     world_size = dist.get_world_size()
     for run in range(args.nruns):
@@ -186,12 +211,13 @@ def main(rank, world_size, args):
             # train
             scaler = GradScaler()
             train_loss, train_class_acc, train_noobj_acc, train_obj_acc = (
-                trainholov4_vid_v3(
+                trainholov4_vid_bptt(
                     rank,
                     train_loader,
                     model,
                     optimizer,
                     scheduler,
+                    #scheduler2,
                     loss_f,
                     scaled_anchors,
                     scaler,
@@ -214,7 +240,7 @@ def main(rank, world_size, args):
             train_noobj_acc /= world_size
             train_obj_acc /= world_size
 
-            test_loss, test_class_acc, test_noobj_acc, test_obj_acc = testholov4_vid_v3(
+            test_loss, test_class_acc, test_noobj_acc, test_obj_acc = testholov4_vid(
                 rank,
                 test_loader,
                 model,

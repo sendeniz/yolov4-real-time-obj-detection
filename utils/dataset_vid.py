@@ -107,17 +107,17 @@ class ImageNetVidDataset(Dataset):
                         image,
                         bboxes,
                         image_size=image_size,
-                        p_scale=1.0,
+                        p_scale=0.0,
                         scale_factor=0.9,
-                        p_trans=1.0,
+                        p_trans=0.0,
                         translate_factor=0.1,
-                        p_rot=0.3,
+                        p_rot=0.0,
                         rotation_angle=45.0,
                         p_shear=0.0,
                         shear_angle=10.0,
-                        p_hflip=0.5,
+                        p_hflip=0.0,
                         p_vflip=0.0,
-                        p_mixup=0.3,
+                        p_mixup=0.0,
                         p_mosaic=0.0,
                         p_hsv=1.0,
                         hgain=0.015,
@@ -135,7 +135,7 @@ class ImageNetVidDataset(Dataset):
                 )
 
         # overwrites regular train augmentation for mosaic or mixup
-        if self.mode == "train" and np.random.rand() <= 0.3:
+        if self.mode == "train" and np.random.rand() <= 0.0:
             mosaic_or_mixup = np.random.choice(["mosaic", "mixup"])
             if mosaic_or_mixup == "mosaic":
                 imgs_lst, bboxes_lst = AugmentImage.mosaic_seq(
