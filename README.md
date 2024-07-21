@@ -107,7 +107,7 @@ CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --
 ```
 
 **Pretrained Checkpoints:**
-Pretrained checkpoints can be downloaded from [here]([https://pages.github.com/](https://drive.google.com/drive/folders/147jOQwUIpgkFESqeyep490xmrdzUTYCe?usp=sharing). You can download the entire ``cpts` folder and replace with the `cpts` folder in the repo.
+Pretrained checkpoints can be downloaded from [here]([https://drive.google.com/drive/folders/147jOQwUIpgkFESqeyep490xmrdzUTYCe?usp=sharing]). You can download the entire ``cpts` folder and replace with the `cpts` folder in the repo.
 
 
 
