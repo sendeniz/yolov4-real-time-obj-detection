@@ -75,6 +75,7 @@ pip install -e .
 Depending on what libraries you may already have, you may wish to `pip install -r requirements.txt`. To run our validation or sanity check experiments the MNIST data set is requiered, which torch will download for you, so there is nothing you need to do. However, to train the video object detector from scratch, you will need 1) the MS COCO VOC and 2) ImageNet VID data-set. You can download [MS COCO VOC]([http://host.robots.ox.ac.uk/pascal/VOC/](https://cocodataset.org/#home)) manually or by calling the following shell file: `utils/get_mscocovoc_data.sh`, which will automatically download and sort the data into the approriate folders and format for training. For [ImageNet VID]([https://www.image-net.org/)) you will have to sign up, request access and download the data by following the website guide.
 
 **Training:**
+<br>
 If you would like to train and replicate our results yourself please run the following commands:
 
 For the SMNIST task:
@@ -107,7 +108,8 @@ CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --
 ```
 
 **Pretrained Checkpoints:**
-Pretrained checkpoints can be downloaded from [here](https://drive.google.com/drive/folders/147jOQwUIpgkFESqeyep490xmrdzUTYCe?usp=sharing). You can download the entire ``cpts` folder and replace with the `cpts` folder in the repo.
+<br>
+Pretrained checkpoints can be downloaded from [here](https://drive.google.com/drive/folders/147jOQwUIpgkFESqeyep490xmrdzUTYCe?usp=sharing). You can download the entire `cpts` folder and replace with the `cpts` folder in the repo. For those who want to train on ImageNet and want to utilise our pretrained backbone trained on MSCOCO, you may only be interested in the pretrained mscoco weight. 
 
 
 
