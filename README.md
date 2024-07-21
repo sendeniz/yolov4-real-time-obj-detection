@@ -14,7 +14,7 @@ The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be s
 
 <p align="center">
 <img src="figures/yolov4_vid.gif" width="300"/> <img src="figures/uryolo_vid.gif" width="300"/> <img src="figures/holo_vid.gif" width="300"/>
- <figcaption>Fig.2 - Test demonstration: YoloV4, UrYolo and Holo trained on ImageNetVid 2015 . </figcaption>
+ <figcaption>Fig.2 -Test demonstration of YoloV4 vid, UrYolo vid and Holo vid trained on ImageNetVid 2015. </figcaption>
 </p>
 
 **Example Dictionary Structure**
