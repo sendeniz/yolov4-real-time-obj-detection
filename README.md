@@ -117,12 +117,14 @@ Pretrained checkpoints can be downloaded from [here](https://drive.google.com/dr
 Loss and accuracy values are computed every epoch. See in Fig.3 and 4 for training vs. test loss and accuarcy.
 adjustments.
 <br>
-A model comparison between test mAP and inference speeed can be seen in Fig.5 and Fig.6 respectively. See Table.1 for exact mAP, FPS values per model.
 
 <p align="center">
   <img width="700" height="300" src=/figures/rnn_train_vs_test_loss.png?raw=true "Training Environment">
 	<figcaption>Fig.3 - Sequence Models in Comparison: Training vs. test loss as a function of epochs.</figcaption>
 </p>
 
-
+<p align="center">
+  <img width="700" height="300" src=/figures/rnn_train_vs_test_acc.png?raw=true "Training Environment">
+	<figcaption>Fig.4 - Sequence Models in Comparison: Training vs. test accuracy as a function of epochs.</figcaption>
+</p>
 
