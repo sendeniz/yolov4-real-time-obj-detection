@@ -112,4 +112,17 @@ CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --
 Pretrained checkpoints can be downloaded from [here](https://drive.google.com/drive/folders/147jOQwUIpgkFESqeyep490xmrdzUTYCe?usp=sharing). You can download the entire `cpts` folder and replace with the `cpts` folder in the repo. For those who want to train on ImageNet and want to utilise our pretrained backbone trained on MSCOCO, you may only be interested in the pretrained mscoco weight. 
 
 
+**Results SMNIST:**
+<br>
+Loss and accuracy values are computed every epoch. See in Fig.3 and 4 for training vs. test loss and accuarcy.
+adjustments.
+<br>
+A model comparison between test mAP and inference speeed can be seen in Fig.5 and Fig.6 respectively. See Table.1 for exact mAP, FPS values per model.
+
+<p align="center">
+  <img width="700" height="300" src=/figures/rnn_train_vs_test_loss.png?raw=true "Training Environment">
+	<figcaption>Fig.3 - Sequence Models in Comparison: Training vs. test loss as a function of epochs.</figcaption>
+</p>
+
+
 
