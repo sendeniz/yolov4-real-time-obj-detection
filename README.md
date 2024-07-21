@@ -66,7 +66,7 @@ The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be s
 
 **Getting started:**
 <br>
-In order to get started first `cd` into the `./thesis` dictionary and run the following lines:
+In order to get started first `cd` into the `./yolov4-real-time-obj-detection` dictionary and run the following lines:
 ```
 virtualenv -p python3 venv
 source venv/bin/activate
@@ -106,8 +106,8 @@ CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --
 -gate hippolstm --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
 ```
 
-
-
+**Pretrained Checkpoints:**
+Pretrained checkpoints can be downloaded from [here]([https://pages.github.com/](https://drive.google.com/drive/folders/147jOQwUIpgkFESqeyep490xmrdzUTYCe?usp=sharing). You can download the entire ``cpts` folder and replace with the `cpts` folder in the repo.
 
 
 
