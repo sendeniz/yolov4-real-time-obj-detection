@@ -128,3 +128,32 @@ adjustments.
 	<figcaption>Fig.4 - Sequence Models in Comparison: Training vs. test accuracy as a function of epochs.</figcaption>
 </p>
 
+**Results Yolo MSCOCO2017:**
+<br>
+Loss and mean average precision (mAP) values are computed after every 10th epoch and can are printed during training in the terminal. See in Fig.5 and 6 for training vs. test loss and mAP@0.5. We skip computing mAP, recall and precision for the training data-set due to the large computational cost. That is, because computing these metrics requieres to iterate over the entire data-set i.e., test or train, given that MSCOCO2017 has over 100K training examples, each example with more than one or two bounding box annotations, the metric needs to be computer over a large quantitity, making it computationaly time consuming, especially when the model has not converged yet. 
+<br>
+
+ Metric      			|    Train    |    Test    | 
+| :---         			|     :---:      |     :---:     |  
+|    Class accuracy   		|     0.899     |     0.785    |
+|    Object accuracy  	  	|     0.501     |      0.449   |
+|    No object accuracy  	|     0.996     |     0.997    |
+|    mAP@0.5  			|     −     |     0.468   |
+|    Recall   			|     −     |     0.561    |
+|    Precision 			|     −     |      0.587   |
+
+**Results Yolo ImageNetVID2015:**
+<br>
+Loss and mean average precision (mAP) values are computed after every 10th epoch and can are printed during training in the terminal. See in Fig.5 and 6 for training vs. test loss and mAP@0.5.
+adjustments.
+<br>
+
+<p align="center">
+  <img width="700" height="300" src=/figures/yolo_vid_loss.png?raw=true "Training Environment">
+	<figcaption>Fig.3 - YoloVid: Training vs. test loss as a function of epochs.</figcaption>
+</p>
+
+<p align="center">
+  <img width="700" height="300" src=/figures/yolo_vid_map.png?raw=true "Training Environment">
+	<figcaption>Fig.4 - YoloVid: Training vs. test map as a function of epochs.</figcaption>
+</p>
