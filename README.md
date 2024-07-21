@@ -12,6 +12,11 @@ The short demo for YoloV4, UrYolo and Holo trained on ImageNet VID 2015 can be s
 </p>
 
 
+<p align="center">
+<img src="figures/yolov4_vid.gif" width="300"/> <img src="figures/uryolo_vid.gif" width="300"/> <img src="figures/holo_vid.gif" width="300"/>
+ <figcaption>Fig.2 - Test demonstration: YoloV4, UrYolo and Holo trained on ImageNetVid 2015 . </figcaption>
+</p>
+
 **Example Dictionary Structure**
 
 <details>
@@ -68,4 +73,41 @@ source venv/bin/activate
 pip install -e .
 ```
 Depending on what libraries you may already have, you may wish to `pip install -r requirements.txt`. To run our validation or sanity check experiments the MNIST data set is requiered, which torch will download for you, so there is nothing you need to do. However, to train the video object detector from scratch, you will need 1) the MS COCO VOC and 2) ImageNet VID data-set. You can download [MS COCO VOC]([http://host.robots.ox.ac.uk/pascal/VOC/](https://cocodataset.org/#home)) manually or by calling the following shell file: `utils/get_mscocovoc_data.sh`, which will automatically download and sort the data into the approriate folders and format for training. For [ImageNet VID]([https://www.image-net.org/)) you will have to sign up, request access and download the data by following the website guide.
+
+**Training:**
+If you would like to train and replicate our results yourself please run the following commands:
+
+For the SMNIST task:
+```
+python3 main.py --model_name rnn --dataset_name mnist --hidden_size 512 --input_size 1 --output_size 10 --nepochs 50  --nruns 5 --weight_decay 0.00 --lr 1e-3
+python3 main.py --model_name gru --dataset_name mnist --hidden_size 512 --input_size 1 --output_size 10 --nepochs 50  --nruns 5 --weight_decay 0.00 --lr 1e-3
+python3 main.py --model_name lstm --dataset_name mnist --hidden_size 512 --input_size 1 --output_size 10 --nepochs 50  --nruns 5 --weight_decay 0.00 --lr 1e-3
+python3 main.py --model_name urlstm --dataset_name mnist --hidden_size 512 --input_size 1 --output_size 10 --nepochs 50  --nruns 5 --weight_decay 0.00 --lr 1e-3
+python3 main.py --model_name hippo --dataset_name mnist --hidden_size 512 --input_size 1 --output_size 10 --nepochs 50  --nruns 5 --weight_decay 0.00 --lr 1e-3
+python3 main.py --model_name gatedhippo --dataset_name mnist --hidden_size 512 --input_size 1 --output_size 10 --nepochs 50  --nruns 5 --weight_decay 0.00 --lr 1e-3
+```
+
+For YoloV4 on MSCOCO2017:
+```
+CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=8 python3 train/train_ddp_yolo.py --batch_size 64 --nepochs 300 --save_model True --ngpus 1
+```
+
+For YoloV4 and its recurrent variants UrYolo and Holo please run:
+```
+CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
+-gate none --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
+```
+```
+CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
+-gate urlstm --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
+```
+```
+CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
+-gate hippolstm --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
+```
+
+
+
+
+
 
