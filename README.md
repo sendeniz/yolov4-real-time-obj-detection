@@ -99,11 +99,11 @@ CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --
 -gate none --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
 ```
 ```
-CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
+CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
 -gate urlstm --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
 ```
 ```
-CUDA_VISIBLE_DEVICES=6 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
+CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=4 python3 train/train_holo_enas_vid.py --ngpus 1 --batch_size 32 --seq_len 8 --nclasses 30 -
 -gate hippolstm --hidden_size 1024 --weight_decay 0.00 --momentum 0.937 --pretrained True --lr 1e-3 --nepochs 100
 ```
 
