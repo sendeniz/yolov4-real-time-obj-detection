@@ -157,3 +157,8 @@ adjustments.
   <img width="700" height="300" src=/figures/yolo_vid_map.png?raw=true "Training Environment">
 	<figcaption>Fig.6 - YoloVid: Training vs. test map as a function of epochs.</figcaption>
 </p>
+
+<p align="center">
+  <img width="700" height="400" src=/figures/yolo_vid_confidence.png?raw=true "Training Environment">
+	<figcaption>Fig.7 - YoloVid: test map as a function of different confidence scores.</figcaption>
+</p>
